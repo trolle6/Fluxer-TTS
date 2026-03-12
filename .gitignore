@@ -1,0 +1,23 @@
+# Secrets - never commit
+config.env
+.env
+*.env.local
+
+# Python
+.venv
+venv
+__pycache__
+*.py[cod]
+*.pyo
+.pytest_cache
+.mypy_cache
+
+# Logs
+bot.log
+*.log
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo

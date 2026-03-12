@@ -1,0 +1,20 @@
+#!/bin/bash
+# Run FluxerTools on NAS (Docker)
+# 1. Copy this project to your NAS
+# 2. Edit config.env with your tokens/IDs
+# 3. Run: ./deploy
+
+set -e
+cd "$(dirname "$0")"
+
+if [ ! -f config.env ]; then
+  echo "Missing config.env! Copy config.env.example to config.env and fill in values."
+  exit 1
+fi
+
+echo "Building and starting FluxerTools..."
+docker compose up -d --build
+
+echo ""
+echo "Bot is running. View logs: docker compose logs -f"
+echo "Stop: docker compose down"

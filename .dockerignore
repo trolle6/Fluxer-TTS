@@ -1,0 +1,9 @@
+# Don't copy into Docker image
+.git
+.venv
+__pycache__
+*.pyc
+.env
+config.env
+bot.log
+*.log

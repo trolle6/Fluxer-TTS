@@ -1,0 +1,12 @@
+# FluxerTools - run on NAS (Synology, QNAP, etc.)
+# Usage: docker compose up -d
+#        docker compose logs -f  # watch logs
+
+services:
+  fluxertools:
+    build: .
+    restart: unless-stopped
+    env_file: config.env
+    # Or mount config for easier editing:
+    # volumes:
+    #   - ./config.env:/app/config.env:ro

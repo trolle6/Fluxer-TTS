@@ -1,0 +1,16 @@
+# FluxerTools - Fluxer Bot Dependencies
+# Ported from WaveTechToolBoxx for Fluxer platform
+
+# Core Fluxer library - voice extra for TTS
+fluxer.py[voice]>=0.4.0
+
+# HTTP client for API calls (OpenAI TTS, DALL-E)
+aiohttp>=3.9.0
+
+# Environment variable management
+python-dotenv>=1.0.0
+
+# Note: ffmpeg must be installed separately for voice/TTS
+# Windows: choco install ffmpeg
+# macOS: brew install ffmpeg
+# Linux: apt install ffmpeg
