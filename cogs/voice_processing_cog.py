@@ -1,19 +1,16 @@
 """
-Voice Processing Cog - TTS for Fluxer
-Auto-TTS: when you type in the TTS channel, the bot speaks it in voice.
+TTS Cog – Auto text-to-speech for Fluxer voice
 
-FEATURES:
-- 🎤 Auto-TTS: type in the designated channel → bot speaks in your voice channel
-- 🤖 OpenAI TTS API
-- ⚡ Basic caching
-
-Configure TTS channel via FLUXER_CHANNEL_ID (or TTS_CHANNEL_ID to use a different channel).
+Type in the TTS channel while in voice → bot speaks your message.
+OpenAI tts-1-hd, LRU cache, stays until channel empty.
+Configure: TTS_CHANNEL_ID or FLUXER_CHANNEL_ID.
 """
 
 import asyncio
 import hashlib
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -23,9 +20,11 @@ from fluxer.cog import Cog
 
 from . import utils
 
-TTS_MAX_CHARS = 4096
+TTS_MAX_CHARS = 4096  # OpenAI API limit
+TTS_MAX_SPEECH_CHARS = 4096  # OpenAI TTS max
 TTS_URL = "https://api.openai.com/v1/audio/speech"
 DEFAULT_VOICE = "alloy"
+MIN_TEXT_LEN = 2
 
 
 class VoiceProcessingCog(Cog):
@@ -51,10 +50,18 @@ class VoiceProcessingCog(Cog):
         self._playing_guilds: set[int] = set()
         self._playing_lock = asyncio.Lock()
         self._active_voice: dict[int, fluxer.VoiceClient] = {}  # guild_id -> VoiceClient (stays until VC empty)
+        self._last_tts: tuple[int, str, float] = (0, "", 0.0)  # (author_id, content_hash, time) for dedupe
+        self._max_speech_chars = int(getattr(bot.config, "TTS_MAX_MESSAGE_LENGTH", TTS_MAX_SPEECH_CHARS))
         # TTS channel: use TTS_CHANNEL_ID if set, else FLUXER_CHANNEL_ID
         tts_ch = getattr(bot.config, "TTS_CHANNEL_ID", None) or getattr(bot.config, "FLUXER_CHANNEL_ID", None)
         self._tts_channel_id = int(tts_ch) if tts_ch else None
-        self.logger.info("TTS cog initialized (channel=%s)", self._tts_channel_id)
+        self._tts_role_id: Optional[int] = None
+        if ttr := getattr(bot.config, "TTS_ROLE_ID", None):
+            try:
+                self._tts_role_id = int(ttr)
+            except (ValueError, TypeError):
+                pass
+        self.logger.info("TTS cog initialized (channel=%s, role_restricted=%s)", self._tts_channel_id, bool(self._tts_role_id))
 
     def _clean_text(self, text: str) -> str:
         """Remove Discord/Fluxer formatting from text."""
@@ -123,11 +130,31 @@ class VoiceProcessingCog(Cog):
         self._active_voice[guild_id] = vc
         return vc
 
-    async def _play_tts(self, guild_id: int, channel_id: int, text: str) -> bool:
+    def _author_can_use_tts(self, voice_state: fluxer.VoiceState) -> bool:
+        """Check if author has TTS_ROLE_ID when role restriction is enabled."""
+        if not self._tts_role_id:
+            return True
+        if voice_state.member is None:
+            return True  # No member data, allow (avoid extra HTTP)
+        return voice_state.member.has_role(self._tts_role_id)
+
+    async def _play_tts(self, guild_id: int, channel_id: int, text: str, author_id: int) -> bool:
         """Generate TTS and play in voice channel. Stays in VC until channel is empty."""
         text = self._clean_text(text)
-        if len(text) < 2:
+        if len(text) < MIN_TEXT_LEN:
             return False
+
+        # Dedupe: same user, same content within 3 sec = skip (prevents double-speak)
+        content_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
+        now = time.time()
+        prev_author, prev_hash, prev_time = self._last_tts
+        if prev_author == author_id and prev_hash == content_hash and (now - prev_time) < 3:
+            return False
+        self._last_tts = (author_id, content_hash, now)
+
+        # Truncate only if over configured limit (default 4096, OpenAI max)
+        if len(text) > self._max_speech_chars:
+            text = text[: self._max_speech_chars - 20].rsplit(" ", 1)[0] + " ... (truncated)"
 
         cache_key = self._cache_key(text, DEFAULT_VOICE)
         audio_data = await self.cache.get(cache_key)
@@ -173,6 +200,9 @@ class VoiceProcessingCog(Cog):
             return
         if message.author.bot:
             return
+        # Skip bot's own messages (Fluxer may not set author.bot for bot posts)
+        if self.bot.user and message.author.id == self.bot.user.id:
+            return
         if not message.content or not message.content.strip():
             if debug:
                 self.logger.info("TTS skip: empty content")
@@ -205,13 +235,19 @@ class VoiceProcessingCog(Cog):
                 self.logger.info("TTS skip: author not in voice (guild=%s, author=%s)", guild_id, message.author.id)
             return
 
+        if not self._author_can_use_tts(voice_state):
+            if debug:
+                self.logger.info("TTS skip: author lacks TTS role")
+            return
+
         if not await self.rate_limiter.check(str(message.author.id)):
             if debug:
                 self.logger.info("TTS skip: rate limited")
             return
 
-        self.logger.info("TTS playing for %s: %r", getattr(message.author, "username", "?"), message.content[:60])
-        await self._play_tts(guild_id, int(voice_state.channel_id), message.content)
+        author_name = getattr(message.author, "username", None) or str(message.author.id)
+        self.logger.info("TTS playing for %s: %r", author_name, (message.content or "")[:60])
+        await self._play_tts(guild_id, int(voice_state.channel_id), message.content, message.author.id)
 
     @Cog.listener()
     async def on_voice_state_update(self, voice_state: fluxer.VoiceState):
@@ -222,6 +258,10 @@ class VoiceProcessingCog(Cog):
             return
         guild_id = int(voice_state.guild_id)
         await self._maybe_disconnect_if_alone(guild_id)
+
+    async def cog_unload(self):
+        """Clear voice state - main.py disconnects before cog removal."""
+        self._active_voice.clear()
 
 
 async def setup(bot: fluxer.Bot):

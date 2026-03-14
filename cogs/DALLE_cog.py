@@ -1,24 +1,24 @@
 """
-DALL-E Image Generation Cog - Fluxer Port
-Ported from WaveTechToolBoxx
+DALL-E 3 Cog – AI image generation for Fluxer
 
-COMMANDS:
-- !image <prompt> [size] [quality] - Generate AI image
+!image <prompt> [size] [quality]
   size: 1024x1024, 1792x1024, 1024x1792
   quality: standard, hd
+
+Queue, cache, rate limiting, Fluxer embeds.
 """
 
 import asyncio
 import hashlib
-import re
 import time
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import aiohttp
 import fluxer
 from fluxer.cog import Cog
 
+from . import fluxy
 from . import utils
 
 SIZES = ("1024x1024", "1792x1024", "1024x1792")
@@ -74,50 +74,41 @@ class DALLECog(Cog):
         self.logger.info("DALL-E cog initialized")
 
     def _create_error_embed(self, error_msg: str, elapsed: float = 0.0) -> fluxer.Embed:
-        embed = fluxer.Embed(title="❌ Generation Failed", description=error_msg, color=0xE74C3C)
+        e = fluxy.embed_error("❌ Generation Failed", error_msg)
         if elapsed > 0:
-            embed.set_footer(text=f"Time: {elapsed:.1f}s")
-        return embed
+            e.set_footer(text=f"Time: {elapsed:.1f}s")
+        return e
 
     def _create_success_embed(self, image_url: str, prompt: str, quality: str, elapsed: float) -> fluxer.Embed:
-        preview = prompt[:200] + "..." if len(prompt) > 200 else prompt
-        embed = fluxer.Embed(title="🎨 Image Generated!", description=f"**Prompt:** {preview}", color=0x2ECC71)
-        embed.set_image(url=image_url)
-        embed.add_field(name="Time", value=f"{elapsed:.1f}s", inline=True)
-        embed.add_field(name="Model", value="DALL-E 3", inline=True)
-        embed.add_field(name="Quality", value=quality.upper(), inline=True)
-        embed.set_footer(text="💡 Tip: Use specific details for better results!")
-        return embed
+        preview = fluxy.truncate(prompt, 180)
+        e = fluxy.embed_success("🎨 Image Generated", f"**Prompt:** {preview}")
+        e.set_image(url=image_url)
+        e.add_field(name="Time", value=f"{elapsed:.1f}s", inline=True)
+        e.add_field(name="Quality", value=quality.upper(), inline=True)
+        e.set_footer(text="💡 Use specific details for better results")
+        return e
 
     def _create_loading_embed(self, prompt: str, size: str, quality: str) -> fluxer.Embed:
-        embed = fluxer.Embed(
-            title="🎨 Generating Image",
-            description="Creating your masterpiece with DALL-E 3...",
-            color=0x3498DB,
-        )
-        preview = prompt[:100] + "..." if len(prompt) > 100 else prompt
-        embed.add_field(name="Prompt", value=f"```{preview}```", inline=False)
-        embed.add_field(name="Quality", value=quality.upper(), inline=True)
-        embed.add_field(name="Size", value=size, inline=True)
-        embed.set_footer(text="This may take 15-30 seconds")
-        return embed
+        preview = fluxy.truncate(prompt, 80)
+        e = fluxy.embed_info("🎨 Generating", "Creating with DALL-E 3...")
+        e.add_field(name="Prompt", value=f"```{preview}```", inline=False)
+        e.add_field(name="Quality", value=quality.upper(), inline=True)
+        e.add_field(name="Size", value=size, inline=True)
+        e.set_footer(text="Typically 15–30 seconds")
+        return e
 
     def _create_cache_embed(self, image_url: str) -> fluxer.Embed:
-        embed = fluxer.Embed(title="🎨 Image Generated!", description="Retrieved from cache", color=0x3498DB)
-        embed.set_image(url=image_url)
-        embed.set_footer(text="⚡ Retrieved from cache")
-        return embed
+        e = fluxy.embed_info("🎨 Image Generated", "Retrieved from cache")
+        e.set_image(url=image_url)
+        e.set_footer(text="⚡ From cache")
+        return e
 
     def _create_queue_embed(self, queue_size: int) -> fluxer.Embed:
-        embed = fluxer.Embed(
-            title="⏳ Image Generation Queued",
-            description="Your request has been added to the queue",
-            color=0x3498DB,
-        )
-        embed.add_field(name="Position", value=f"#{queue_size}", inline=True)
-        embed.add_field(name="Est. Wait", value=f"~{queue_size * 30}s", inline=True)
-        embed.set_footer(text="You'll be notified when it's ready")
-        return embed
+        e = fluxy.embed_info("⏳ Queued", "Your request is in the queue")
+        e.add_field(name="Position", value=f"#{queue_size}", inline=True)
+        e.add_field(name="Est. Wait", value=f"~{queue_size * 30}s", inline=True)
+        e.set_footer(text="You'll be notified when ready")
+        return e
 
     def _cache_key(self, prompt: str, size: str, quality: str) -> str:
         return hashlib.sha256(f"{prompt}:{size}:{quality}".encode()).hexdigest()
@@ -206,11 +197,9 @@ class DALLECog(Cog):
         return {"success": False, "error": "Max retries exceeded"}
 
     def _extract_image_url(self, result: Dict) -> Optional[str]:
+        """OpenAI returns { data: [{ url: "..." }] }."""
         try:
-            api_resp = result.get("data")
-            if not isinstance(api_resp, dict):
-                return None
-            images = api_resp.get("data")
+            images = result.get("data")
             if not isinstance(images, list) or not images:
                 return None
             first = images[0]
@@ -310,16 +299,16 @@ class DALLECog(Cog):
     async def image(self, ctx: fluxer.Message, *, prompt: str):
         """Generate an image with DALL-E 3. Usage: !image <prompt> [size] [quality]"""
         if not self.enabled:
-            await ctx.reply("❌ DALL-E is not configured")
+            await ctx.reply(embed=fluxy.embed_error("Not Configured", "DALL-E requires OPENAI_API_KEY"))
             return
 
         prompt, size, quality = self._parse_prompt_args(prompt)
         if len(prompt) < 3:
-            await ctx.reply("❌ Prompt too short (min 3 characters)")
+            await ctx.reply(embed=fluxy.embed_error("Too Short", "Prompt must be at least 3 characters"))
             return
 
         if not await self.rate_limiter.check(str(ctx.author.id)):
-            await ctx.reply("⏳ Rate limited. Please wait before generating another image.")
+            await ctx.reply(embed=fluxy.embed_info("⏳ Rate Limited", "Please wait before generating another image."))
             return
 
         cache_key = self._cache_key(prompt, size, quality)
@@ -331,7 +320,8 @@ class DALLECog(Cog):
             await ctx.reply(embed=embed)
             return
 
-        queue_embed = self._create_queue_embed(1)
+        queue_size = self.queue.qsize() + 1
+        queue_embed = self._create_queue_embed(queue_size)
         status_msg = await ctx.reply(embed=queue_embed)
 
         job = GenerationJob(
@@ -347,7 +337,11 @@ class DALLECog(Cog):
             queue_embed = self._create_queue_embed(self.queue.qsize())
             await status_msg.edit(embeds=[queue_embed.to_dict()])
         except asyncio.QueueFull:
-            await status_msg.edit(content="❌ Queue is full. Try again in a few minutes.")
+            embed = fluxy.embed_error("Queue Full", "Try again in a few minutes.")
+            try:
+                await status_msg.edit(embeds=[embed.to_dict()])
+            except Exception:
+                await status_msg.edit(content="❌ Queue full. Try again later.")
 
     async def daily_maintenance(self):
         if self.enabled and hasattr(self, "cache"):

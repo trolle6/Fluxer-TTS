@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run FluxerTools on NAS (Docker)
+# Run FluxerTools on NAS / Linux / macOS (Docker)
 # 1. Copy this project to your NAS
 # 2. Edit config.env with your tokens/IDs
 # 3. Run: ./deploy

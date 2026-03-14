@@ -1,30 +1,47 @@
 """
-FluxerTools - Fluxer Bot Main Entry Point
-Ported from WaveTechToolBoxx (Discord) to Fluxer platform
+FluxerTools – Professional Fluxer Bot
 
-FEATURES:
-- 🎤 Text-to-Speech (OpenAI TTS)
-- 🎨 AI Image Generation (DALL-E 3)
-- 🎄 Secret Santa Event Management
-- 📦 DistributeZip & Custom Events
+TTS (OpenAI), DALL-E 3 images, Secret Santa.
 
-USAGE:
- python main.py
-
-Based on: https://github.com/trolle6/WaveTechToolBoxx
+Usage: python main.py
 Fluxer: https://fluxer.app | https://docs.fluxer.app
 """
+
+# Re-run with project venv if PyCharm/IDE used wrong interpreter
+if __name__ == "__main__":
+    import os
+    import sys
+    import subprocess
+    import signal
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    _venv_py = os.path.join(_script_dir, ".venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
+    if os.path.exists(_venv_py):
+        _current = os.path.realpath(sys.executable)
+        _wanted = os.path.realpath(_venv_py)
+        if _current != _wanted:
+            # Use Popen so we can forward Ctrl+C to child and wait for it.
+            proc = subprocess.Popen([_venv_py] + sys.argv)
+            try:
+                sys.exit(proc.wait())
+            except KeyboardInterrupt:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=8)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                sys.exit(130)
 
 import asyncio
 import io
 import logging
 import logging.handlers
 import os
+import queue
 import signal
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -44,7 +61,7 @@ class FluxerToolsBot(fluxer.Bot):
     event. GUILD_CREATE includes voice_states — we populate the cache from it.
     """
 
-    async def _dispatch(self, event_name: str, data) -> None:
+    async def _dispatch(self, event_name: str, data: Any) -> None:
         if event_name == "GUILD_CREATE" and self._http:
             guild_id = int(data["id"]) if data.get("id") else 0
             if guild_id:
@@ -78,6 +95,7 @@ CONFIG_DEFAULTS = {
     "AUTO_DISCONNECT_TIMEOUT": 300,
     "TTS_ROLE_ID": None,
     "BOT_OWNER_USER_ID": None,
+    "TTS_MAX_MESSAGE_LENGTH": 4096,  # OpenAI TTS max; Fluxer may truncate earlier
 }
 
 
@@ -193,7 +211,8 @@ LOG_FILE_BACKUP_COUNT = 5
 
 
 class FluxerLogHandler(logging.Handler):
-    """Send log messages to Fluxer channel."""
+    """Send log messages to Fluxer channel. Uses queue.Queue (not asyncio) so emit()
+    works during shutdown when the event loop may be closed."""
 
     EMOJI_MAP = {"WARNING": "⚠️", "ERROR": "❌", "CRITICAL": "🚨"}
 
@@ -201,7 +220,7 @@ class FluxerLogHandler(logging.Handler):
         super().__init__()
         self.log_channel_id = log_channel_id
         self.bot: Optional[fluxer.Bot] = None
-        self.message_queue: asyncio.Queue = asyncio.Queue(maxsize=50)
+        self.message_queue: queue.Queue = queue.Queue(maxsize=50)
         self.sender_task: Optional[asyncio.Task] = None
         self._last_message: dict = {}
 
@@ -224,13 +243,14 @@ class FluxerLogHandler(logging.Handler):
             message = message[:1900] + "...\n```"
         try:
             self.message_queue.put_nowait(message)
-        except asyncio.QueueFull:
+        except queue.Full:
             pass
 
     async def _sender_loop(self):
+        loop = asyncio.get_running_loop()
         while True:
             try:
-                msg = await self.message_queue.get()
+                msg = await loop.run_in_executor(None, self.message_queue.get)
                 if self.bot and self.log_channel_id:
                     try:
                         channel = await self.bot.fetch_channel(str(self.log_channel_id))
@@ -248,6 +268,8 @@ class FluxerLogHandler(logging.Handler):
 def setup_logging(config: Config) -> tuple[logging.Logger, FluxerLogHandler]:
     logger = logging.getLogger("bot")
     logger.setLevel(config.LOG_LEVEL)
+    # Reduce "Invalid session" spam from fluxer (expected when zombie sessions exist)
+    logging.getLogger("fluxer.gateway").setLevel(logging.ERROR)
     if logger.handlers:
         for h in logger.handlers:
             if isinstance(h, FluxerLogHandler):
@@ -387,31 +409,71 @@ async def on_error(event, *args, **kwargs):
 _shutdown_in_progress = False
 
 
-async def graceful_shutdown():
+async def _do_shutdown():
+    """Actual shutdown logic. Called with timeout so we never hang forever."""
     global _shutdown_in_progress
     if _shutdown_in_progress:
         return
     _shutdown_in_progress = True
     logger.info("Shutting down...")
+
+    # 1. Stop Fluxer log handler sender first
+    if fluxer_handler and fluxer_handler.sender_task and not fluxer_handler.sender_task.done():
+        fluxer_handler.sender_task.cancel()
+        try:
+            await asyncio.wait_for(fluxer_handler.sender_task, timeout=2.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
+    logger.info("Shutdown: log handler stopped")
+
+    # 2. Disconnect voice FIRST (before removing cogs) - LiveKit can block
+    voice_cog = bot.get_cog("VoiceProcessingCog")
+    if voice_cog and hasattr(voice_cog, "_active_voice") and voice_cog._active_voice:
+        logger.info("Shutdown: disconnecting %d voice connection(s)...", len(voice_cog._active_voice))
+        for guild_id, vc in list(voice_cog._active_voice.items()):
+            voice_cog._active_voice.pop(guild_id, None)
+            try:
+                await asyncio.wait_for(vc.disconnect(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.debug("Shutdown: voice disconnect %s: %s", guild_id, e)
+        logger.info("Shutdown: voice disconnected")
+
+    # 3. Remove cogs (lightweight now - voice already disconnected)
     for cog_name in list(bot._cogs.keys()):
         try:
-            await bot.remove_cog(cog_name)
-        except Exception:
-            pass
-    await asyncio.sleep(0.8)
+            await asyncio.wait_for(bot.remove_cog(cog_name), timeout=3.0)
+            logger.info("Shutdown: removed cog %s", cog_name)
+        except asyncio.TimeoutError:
+            logger.warning("Shutdown: cog %s unload timed out", cog_name)
+        except Exception as e:
+            logger.warning("Shutdown: cog %s error: %s", cog_name, e)
+    logger.info("Shutdown: cogs removed")
+
+    await asyncio.sleep(0.3)
     if hasattr(bot, "executor") and bot.executor:
         try:
-            bot.executor.shutdown(wait=True)
+            bot.executor.shutdown(wait=False)
         except Exception:
             pass
+
     try:
-        await bot.http_mgr.close()
+        await asyncio.wait_for(bot.http_mgr.close(), timeout=3.0)
     except Exception:
         pass
+
     try:
-        await bot.close()
-    except Exception:
-        pass
+        await asyncio.wait_for(bot.close(), timeout=5.0)
+        logger.info("Shutdown: bot closed")
+    except Exception as e:
+        logger.warning("Shutdown: bot.close error: %s", e)
+
+
+async def graceful_shutdown():
+    """Shutdown with overall timeout - never hang forever."""
+    try:
+        await asyncio.wait_for(_do_shutdown(), timeout=12.0)
+    except asyncio.TimeoutError:
+        logger.warning("Shutdown timed out, forcing exit")
 
 
 def handle_signal(signum, frame):
@@ -447,6 +509,7 @@ async def load_cogs() -> int:
 # ============ MAIN ============
 if __name__ == "__main__":
     logger.info("Starting FluxerTools...")
+    logger.info("Tip: If connection is slow or you see multiple 'devices', revoke & regenerate your token in Fluxer → Applications to clear zombie sessions.")
     PYTHON_MIN = (3, 10)
     if sys.version_info < PYTHON_MIN:
         logger.critical(f"Python {PYTHON_MIN[0]}.{PYTHON_MIN[1]}+ required.")
@@ -472,6 +535,7 @@ if __name__ == "__main__":
 
     try:
         bot.run(config.FLUXER_TOKEN)
+        logger.info("Bot has stopped (gateway disconnected)")
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt")
     except Exception as e:
@@ -483,4 +547,11 @@ if __name__ == "__main__":
             if loop.is_running():
                 loop.create_task(graceful_shutdown())
         except RuntimeError:
+            pass
+
+    # Optional: keep window open on Windows when run by double-click (no console)
+    if os.name == "nt" and os.environ.get("PAUSE_ON_EXIT", "").lower() == "true":
+        try:
+            input("\nPress Enter to close...")
+        except (EOFError, UnicodeDecodeError, OSError, KeyboardInterrupt):
             pass

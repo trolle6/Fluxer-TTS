@@ -16,6 +16,12 @@ __pycache__
 bot.log
 *.log
 
+# Secret Santa state & archives (user data)
+cogs/secret_santa_state.json
+cogs/secret_santa_state.backup
+cogs/archive/*.json
+cogs/archive/backups/
+
 # IDE
 .idea
 .vscode

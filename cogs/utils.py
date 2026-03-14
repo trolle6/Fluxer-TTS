@@ -1,7 +1,4 @@
-"""
-Bot Utilities - Shared Components for All Cogs
-Ported from WaveTechToolBoxx - platform agnostic
-"""
+"""Shared utilities: RateLimiter, LRUCache, CircuitBreaker."""
 
 import asyncio
 import json
