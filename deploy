@@ -8,12 +8,15 @@ set -e
 cd "$(dirname "$0")"
 
 if [ ! -f config.env ]; then
-  echo "Missing config.env! Copy config.env.example to config.env and fill in values."
-  exit 1
+  echo "Note: no config.env in this directory — set FLUXER_* / OPENAI_* in the environment (TrueNAS UI) or copy config.env.example to config.env"
 fi
 
 echo "Building and starting FluxerTools..."
-docker compose up -d --build
+if [ -f config.env ]; then
+  docker compose --env-file config.env up -d --build
+else
+  docker compose up -d --build
+fi
 
 echo ""
 echo "Bot is running. View logs: docker compose logs -f"

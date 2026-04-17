@@ -1,5 +1,30 @@
 # FluxerTools Troubleshooting
 
+## TrueNAS SCALE: `CallError` / `EFAULT` / Failed `up` action for app
+
+TrueNAS wraps `docker compose up`. The UI error is generic — the real error is in **`/var/log/app_lifecycle.log`** on the NAS.
+
+### Common causes
+
+1. **Compose file unsupported or invalid**  
+   Older Compose on SCALE may reject newer YAML (e.g. extended `env_file` forms). This repo uses plain `environment: ${VAR}` so variables come from the TrueNAS app **Environment** UI or from `docker compose --env-file config.env`.
+
+2. **Missing required environment variables**  
+   The container needs at least: `FLUXER_TOKEN`, `FLUXER_GUILD_ID`, `FLUXER_CHANNEL_ID`, `FLUXER_LOG_CHANNEL_ID`, `FLUXER_MODERATOR_ROLE_ID`, `OPENAI_API_KEY`.  
+   If any are empty, the bot exits immediately — check app logs: `docker compose logs` (or SCALE app logs).
+
+3. **Build failure**  
+   Network/DNS during `pip install` or `apt-get` in the Dockerfile. Check `app_lifecycle.log` for the first `ERROR` from `docker build` or `compose`.
+
+### What to do
+
+1. SSH to the NAS (or use SCALE shell) and run:
+   ```bash
+   tail -n 200 /var/log/app_lifecycle.log
+   ```
+2. Fix the **first** compose/build error shown (not only the final `EFAULT` line).
+3. In the TrueNAS app, set **Environment** variables to match `config.env.example` (names must match `docker-compose.yml`).
+
 ## "Invalid session (resumable=False)"
 
 The Fluxer gateway rejected the bot's authentication. Try these steps:

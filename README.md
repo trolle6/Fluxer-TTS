@@ -50,7 +50,7 @@ A **Fluxer**-friendly bot ported from [WaveTechToolBoxx](https://github.com/trol
    |----------|---------|
    | Windows | `run.bat` or `\.venv\Scripts\python.exe main.py` |
    | macOS / Linux | `./run.sh` or `./.venv/bin/python main.py` |
-   | Docker (any) | `docker compose up -d` |
+   | Docker (any) | `docker compose --env-file config.env up -d --build` (or `./deploy`) |
    | PyCharm | Set interpreter to `FluxerTools\.venv\Scripts\python.exe` |
 
 ## Running on NAS
@@ -62,10 +62,12 @@ A **Fluxer**-friendly bot ported from [WaveTechToolBoxx](https://github.com/trol
 3. Run:
 
    ```bash
-   docker compose up -d --build
+   docker compose --env-file config.env up -d --build
    ```
 
-   Or use the helper script: `./deploy`
+   Or use the helper script: `./deploy` (uses `--env-file` when `config.env` exists).
+
+   **TrueNAS SCALE:** set the same variables in the app’s **Environment** section (no `config.env` file needed). Avoid the older `env_file: path/required` compose form — some hosts reject it.
 
    Logs: `docker compose logs -f`  
    Stop: `docker compose down`

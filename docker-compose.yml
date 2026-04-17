@@ -1,16 +1,39 @@
-# FluxerTools - run on NAS (Synology, QNAP, etc.)
-# Usage: docker compose up -d
-#        docker compose logs -f  # watch logs
+# FluxerTools – Docker (NAS, TrueNAS SCALE, etc.)
+#
+# Env vars are passed into the container via `environment` (no env_file required).
+# TrueNAS: set these in the app UI; they become compose interpolation variables.
+# Local: use `docker compose --env-file config.env up -d --build` or `./deploy`
 
 services:
   fluxertools:
     build: .
     restart: unless-stopped
-    # Optional for platforms like TrueNAS where env vars are injected by app config.
-    # Local docker usage can still keep a config.env file.
-    env_file:
-      - path: config.env
-        required: false
-    # Or mount config for easier editing:
+    environment:
+      # Required (same as main.py / config.env.example)
+      FLUXER_TOKEN: ${FLUXER_TOKEN}
+      FLUXER_GUILD_ID: ${FLUXER_GUILD_ID}
+      FLUXER_CHANNEL_ID: ${FLUXER_CHANNEL_ID}
+      FLUXER_LOG_CHANNEL_ID: ${FLUXER_LOG_CHANNEL_ID}
+      FLUXER_MODERATOR_ROLE_ID: ${FLUXER_MODERATOR_ROLE_ID}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Optional
+      FLUXER_API_URL: ${FLUXER_API_URL:-}
+      FLUXER_MODERATOR_USER_IDS: ${FLUXER_MODERATOR_USER_IDS:-}
+      FLUXER_MODERATOR_ROLE_NAME: ${FLUXER_MODERATOR_ROLE_NAME:-}
+      BOT_OWNER_USER_ID: ${BOT_OWNER_USER_ID:-}
+      TTS_CHANNEL_ID: ${TTS_CHANNEL_ID:-}
+      TTS_ROLE_ID: ${TTS_ROLE_ID:-}
+      DEBUG_MODE: ${DEBUG_MODE:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SKIP_API_VALIDATION: ${SKIP_API_VALIDATION:-false}
+      MAX_TTS_CACHE: ${MAX_TTS_CACHE:-50}
+      TTS_TIMEOUT: ${TTS_TIMEOUT:-15}
+      MAX_QUEUE_SIZE: ${MAX_QUEUE_SIZE:-50}
+      RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-15}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-60}
+      VOICE_TIMEOUT: ${VOICE_TIMEOUT:-10}
+      AUTO_DISCONNECT_TIMEOUT: ${AUTO_DISCONNECT_TIMEOUT:-300}
+      TTS_MAX_MESSAGE_LENGTH: ${TTS_MAX_MESSAGE_LENGTH:-4096}
+    # Optional: mount secrets file (main.py also calls load_dotenv("config.env"))
     # volumes:
     #   - ./config.env:/app/config.env:ro
