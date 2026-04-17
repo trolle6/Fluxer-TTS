@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import difflib
 import time
 from typing import List, Optional
 
 import aiohttp
 import fluxer
 from fluxer.cog import Cog
+from fluxer.enums import Permissions
+from fluxer.errors import HTTPException
 from fluxer.models import GuildMember
 
 from . import fluxy
@@ -41,6 +44,12 @@ BACKUP_INTERVAL = 3600
 ANONYMIZE_RETRY_MAX = 2
 ANONYMIZE_TIMEOUT = 15
 
+_NOT_MOD_BODY = (
+    "Need mod access: correct **FLUXER_MODERATOR_ROLE_ID**, or add your user ID to "
+    "**FLUXER_MODERATOR_USER_IDS** in config.env. Guild owner / Administrator / "
+    "Manage Server also qualify."
+)
+
 
 class SecretSantaCog(Cog):
     """Secret Santa event management – Fluxer port."""
@@ -65,21 +74,162 @@ class SecretSantaCog(Cog):
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _safe_int(value: object, default: int = 0) -> int:
+        if value is None:
+            return default
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.strip():
+            try:
+                return int(value.strip())
+            except ValueError:
+                return default
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return default
+
+    def _member_role_ids(self, member_data: dict) -> set[int]:
+        """Parse role IDs from API payload (robust if types vary)."""
+        out: set[int] = set()
+        raw = member_data.get("roles")
+        if raw is None:
+            raw = member_data.get("role_ids") or member_data.get("roleIds")
+        if not isinstance(raw, list):
+            return out
+        for r in raw:
+            try:
+                out.add(int(r))
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    def _moderator_user_allowlist(self) -> set[int]:
+        raw = getattr(self.bot.config, "FLUXER_MODERATOR_USER_IDS", None)
+        if not raw:
+            return set()
+        if isinstance(raw, list):
+            return {int(x) for x in raw if isinstance(x, int) or (isinstance(x, str) and str(x).isdigit())}
+        return set()
+
     async def _is_moderator(self, ctx: fluxer.Message) -> bool:
+        """Guild owner, configured role(s), permission bits, or explicit user allowlist.
+
+        Fluxer sometimes omits `roles` on member payloads — use FLUXER_MODERATOR_USER_IDS then.
+        """
         if not ctx.guild_id:
-            return False
-        role_id = self._get_moderator_role_id()
-        if not role_id:
             return False
         http = getattr(self.bot, "_http", None)
         if not http:
+            self.logger.warning("Moderator check: bot HTTP client missing")
             return False
+
+        author_id = int(ctx.author.id)
+
+        allow = self._moderator_user_allowlist()
+        if author_id in allow:
+            return True
+
+        bot_owner = getattr(self.bot.config, "BOT_OWNER_USER_ID", None)
+        if bot_owner is not None:
+            try:
+                if author_id == int(bot_owner):
+                    return True
+            except (TypeError, ValueError):
+                pass
+
+        gid = int(ctx.guild_id)
+        guild_data: Optional[dict] = None
+        member_data: Optional[dict] = None
+
+        async def _fetch(name: str, coro):
+            try:
+                return await coro
+            except HTTPException as e:
+                if e.status == 403:
+                    self.logger.debug("Moderator check: %s 403 (forbidden): %s", name, e)
+                else:
+                    self.logger.warning("Moderator check: %s failed: %s", name, e)
+                return None
+            except Exception as e:
+                self.logger.warning("Moderator check: %s failed: %s", name, e)
+                return None
+
+        g, m = await asyncio.gather(
+            _fetch("get_guild", http.get_guild(ctx.guild_id)),
+            _fetch("get_guild_member", http.get_guild_member(ctx.guild_id, ctx.author.id)),
+        )
+        guild_data = g if isinstance(g, dict) else None
+        member_data = m if isinstance(m, dict) else None
+
+        if isinstance(guild_data, dict) and guild_data.get("data") and isinstance(guild_data["data"], dict):
+            guild_data = guild_data["data"]
+
+        owner_id = self._safe_int(guild_data.get("owner_id") if guild_data else None)
+        if owner_id and author_id == owner_id:
+            return True
+
+        role_ids = self._member_role_ids(member_data if isinstance(member_data, dict) else {})
+        mod_role_id = self._get_moderator_role_id()
+        if mod_role_id and mod_role_id in role_ids:
+            return True
+
+        role_name_cfg = getattr(self.bot.config, "FLUXER_MODERATOR_ROLE_NAME", None)
+
+        # Needs Manage Roles / similar on the bot; 403 is common — log at DEBUG only.
+        roles_data: Optional[list] = None
         try:
-            member_data = await http.get_guild_member(ctx.guild_id, ctx.author.id)
-            member = GuildMember.from_data(member_data, http, guild_id=ctx.guild_id)
-            return member.has_role(role_id)
-        except Exception:
-            return False
+            raw_roles = await http.get_guild_roles(ctx.guild_id)
+            roles_data = raw_roles if isinstance(raw_roles, list) else None
+        except HTTPException as e:
+            if e.status == 403:
+                self.logger.debug(
+                    "Moderator check: get_guild_roles 403 — bot cannot list roles; "
+                    "use FLUXER_MODERATOR_USER_IDS or match FLUXER_MODERATOR_ROLE_ID to member.roles"
+                )
+            else:
+                self.logger.warning("Moderator check: get_guild_roles failed: %s", e)
+        except Exception as e:
+            self.logger.warning("Moderator check: get_guild_roles failed: %s", e)
+
+        if role_name_cfg and roles_data:
+            want = str(role_name_cfg).strip().lower()
+            for role in roles_data:
+                if not isinstance(role, dict):
+                    continue
+                if str(role.get("name", "")).strip().lower() != want:
+                    continue
+                rid = self._safe_int(role.get("id"))
+                if rid and rid in role_ids:
+                    return True
+
+        mod_bits = (
+            Permissions.ADMINISTRATOR
+            | Permissions.MANAGE_GUILD
+            | Permissions.MANAGE_ROLES
+            | Permissions.MODERATE_MEMBERS
+        )
+        computed = 0
+        for role in roles_data or []:
+            if not isinstance(role, dict):
+                continue
+            rid = self._safe_int(role.get("id"))
+            perms = self._safe_int(role.get("permissions"))
+            if rid == gid or rid in role_ids:
+                computed |= perms
+        if computed & mod_bits:
+            return True
+
+        self.logger.info(
+            "Secret Santa mod denied user=%s owner=%s mod_role_id=%s member_roles=%s "
+            "(add FLUXER_MODERATOR_USER_IDS in config.env if roles are empty)",
+            author_id,
+            owner_id,
+            mod_role_id,
+            len(role_ids),
+        )
+        return False
 
     async def _save_async(self) -> None:
         loop = asyncio.get_running_loop()
@@ -157,7 +307,7 @@ class SecretSantaCog(Cog):
     # ----- Command router -----
     @Cog.command(name="ss")
     async def secret_santa(self, ctx: fluxer.Message):
-        """Secret Santa commands. Usage: !ss help"""
+        """Secret Santa commands. Usage: /ss help"""
         parts = await self._parse_args(ctx)
         sub = (parts[0].lower() if parts else "").strip() or "help"
         rest = parts[1:] if len(parts) > 1 else []
@@ -189,14 +339,20 @@ class SecretSantaCog(Cog):
         if handler:
             await handler(ctx, rest)
         else:
-            emb = fluxy.embed_error("Oops", f"Unknown: `{sub}`. Try `!ss help` for options.")
+            choices = list(handlers.keys()) + ["wishlist"]
+            guess = difflib.get_close_matches(sub, choices, n=1, cutoff=0.45)
+            prefix = self.bot.command_prefix if isinstance(self.bot.command_prefix, str) else "/"
+            if guess:
+                emb = fluxy.embed_error("Oops", f"Unknown: `{sub}`. Did you mean `{prefix}ss {guess[0]}`?")
+            else:
+                emb = fluxy.embed_error("Oops", f"Unknown: `{sub}`. Try `{prefix}ss help` for options.")
             await ctx.reply(embed=emb)
 
     async def _cmd_help(self, ctx: fluxer.Message, rest: List[str]) -> None:
         emb = fluxy.embed_cozy(
             "🎄 Secret Santa",
             "Cozy gift exchanges, right here in Fluxer.",
-            footer="✨ FluxerTools · !ss help",
+            footer="✨ FluxerTools · /ss help",
         )
         emb.add_field(
             name="Moderators",
@@ -220,11 +376,11 @@ class SecretSantaCog(Cog):
             await ctx.reply(embed=fluxy.embed_error("Oops", "Use this in a server channel."))
             return
         if not await self._is_moderator(ctx):
-            await ctx.reply(embed=fluxy.embed_error("Nope", "Moderator role required."))
+            await ctx.reply(embed=fluxy.embed_error("Nope", _NOT_MOD_BODY))
             return
         event = self._get_current_event()
         if event:
-            await ctx.reply(embed=fluxy.embed_error("Already running", "Use `!ss stop` first, then start again."))
+            await ctx.reply(embed=fluxy.embed_error("Already running", "Use `/ss stop` first, then start again."))
             return
 
         year = dt.date.today().year
@@ -240,7 +396,7 @@ class SecretSantaCog(Cog):
                 "communications": {},
             }
             await self._save_async()
-        emb = fluxy.embed_success(f"🎄 Secret Santa {year}", "Event is live! Folks can `!ss join` to sign up.")
+        emb = fluxy.embed_success(f"🎄 Secret Santa {year}", "Event is live! Folks can `/ss join` to sign up.")
         await ctx.reply(embed=emb)
 
     async def _cmd_join(self, ctx: fluxer.Message, rest: List[str]) -> None:
@@ -249,7 +405,7 @@ class SecretSantaCog(Cog):
             return
         event = self._get_current_event()
         if not event:
-            await ctx.reply(embed=fluxy.embed_error("No event", "Wait for a mod to run `!ss start`."))
+            await ctx.reply(embed=fluxy.embed_error("No event", "Wait for a mod to run `/ss start`."))
             return
         if str(event.get("guild_id")) != str(ctx.guild_id):
             await ctx.reply(embed=fluxy.embed_error("Wrong server", "This event belongs to another community."))
@@ -261,7 +417,7 @@ class SecretSantaCog(Cog):
             event["participants"][uid] = name
             event["wishlists"][uid] = event.get("wishlists", {}).get(uid) or []
             await self._save_async()
-        emb = fluxy.embed_success("🎉 You're in!", f"Secret Santa {self.state['current_year']} — add ideas with `!ss wishlist add <item>`")
+        emb = fluxy.embed_success("🎉 You're in!", f"Secret Santa {self.state['current_year']} — add ideas with `/ss wishlist add <item>`")
         await ctx.reply(embed=emb)
 
     async def _cmd_leave(self, ctx: fluxer.Message, rest: List[str]) -> None:
@@ -281,11 +437,11 @@ class SecretSantaCog(Cog):
                 if uid in rev:
                     event["assignments"].pop(rev[uid], None)
             await self._save_async()
-        await ctx.reply(embed=fluxy.embed_info("👋 You're out", "Rejoin anytime before the shuffle with `!ss join`."))
+        await ctx.reply(embed=fluxy.embed_info("👋 You're out", "Rejoin anytime before the shuffle with `/ss join`."))
 
     async def _cmd_shuffle(self, ctx: fluxer.Message, rest: List[str]) -> None:
         if not await self._is_moderator(ctx):
-            await ctx.reply(embed=fluxy.embed_error("Nope", "Moderator required."))
+            await ctx.reply(embed=fluxy.embed_error("Nope", _NOT_MOD_BODY))
             return
         event = self._get_current_event()
         if not event:
@@ -336,7 +492,7 @@ class SecretSantaCog(Cog):
 
     async def _cmd_stop(self, ctx: fluxer.Message, rest: List[str]) -> None:
         if not await self._is_moderator(ctx):
-            await ctx.reply(embed=fluxy.embed_error("Nope", "Moderator required."))
+            await ctx.reply(embed=fluxy.embed_error("Nope", _NOT_MOD_BODY))
             return
         event = self._get_current_event()
         if not event:
@@ -367,7 +523,7 @@ class SecretSantaCog(Cog):
 
     async def _cmd_participants(self, ctx: fluxer.Message, rest: List[str]) -> None:
         if not await self._is_moderator(ctx):
-            await ctx.reply(embed=fluxy.embed_error("Nope", "Moderator required."))
+            await ctx.reply(embed=fluxy.embed_error("Nope", _NOT_MOD_BODY))
             return
         event = self._get_current_event()
         if not event:
@@ -383,7 +539,7 @@ class SecretSantaCog(Cog):
 
     async def _cmd_view_gifts(self, ctx: fluxer.Message, rest: List[str]) -> None:
         if not await self._is_moderator(ctx):
-            await ctx.reply(embed=fluxy.embed_error("Nope", "Moderator required."))
+            await ctx.reply(embed=fluxy.embed_error("Nope", _NOT_MOD_BODY))
             return
         event = self._get_current_event()
         if not event:
@@ -408,7 +564,7 @@ class SecretSantaCog(Cog):
 
     async def _cmd_view_comms(self, ctx: fluxer.Message, rest: List[str]) -> None:
         if not await self._is_moderator(ctx):
-            await ctx.reply(embed=fluxy.embed_error("Nope", "Moderator required."))
+            await ctx.reply(embed=fluxy.embed_error("Nope", _NOT_MOD_BODY))
             return
         event = self._get_current_event()
         if not event:

@@ -33,6 +33,7 @@ if __name__ == "__main__":
                 sys.exit(130)
 
 import asyncio
+import difflib
 import io
 import logging
 import logging.handlers
@@ -95,6 +96,10 @@ CONFIG_DEFAULTS = {
     "AUTO_DISCONNECT_TIMEOUT": 300,
     "TTS_ROLE_ID": None,
     "BOT_OWNER_USER_ID": None,
+    # Comma-separated user IDs allowed to run Secret Santa mod commands (if API omits roles)
+    "FLUXER_MODERATOR_USER_IDS": None,
+    # Optional: role display name to match (case-insensitive) in addition to FLUXER_MODERATOR_ROLE_ID
+    "FLUXER_MODERATOR_ROLE_NAME": None,
     "TTS_MAX_MESSAGE_LENGTH": 4096,  # OpenAI TTS max; Fluxer may truncate earlier
 }
 
@@ -128,6 +133,16 @@ class Config:
                     self.data[key] = int(val)
                 except ValueError:
                     self.data[key] = None
+            elif key == "FLUXER_MODERATOR_USER_IDS":
+                if not val or not str(val).strip():
+                    self.data[key] = None
+                else:
+                    ids: list[int] = []
+                    for part in str(val).split(","):
+                        p = part.strip()
+                        if p.isdigit():
+                            ids.append(int(p))
+                    self.data[key] = ids if ids else None
             else:
                 self.data[key] = val
 
@@ -210,6 +225,11 @@ LOG_FILE_MAX_BYTES = 5_000_000
 LOG_FILE_BACKUP_COUNT = 5
 
 
+# Sentinel to unblock queue.get() in the log sender thread (otherwise a ThreadPool
+# worker blocks forever and asyncio.run() cannot shut down the default executor).
+_LOG_SENDER_STOP = object()
+
+
 class FluxerLogHandler(logging.Handler):
     """Send log messages to Fluxer channel. Uses queue.Queue (not asyncio) so emit()
     works during shutdown when the event loop may be closed."""
@@ -228,6 +248,20 @@ class FluxerLogHandler(logging.Handler):
         self.bot = bot
         if not self.sender_task:
             self.sender_task = asyncio.create_task(self._sender_loop())
+
+    def request_stop(self) -> None:
+        """Unblock the sender thread so the process can exit (call before loop closes)."""
+        try:
+            self.message_queue.put_nowait(_LOG_SENDER_STOP)
+        except queue.Full:
+            try:
+                self.message_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self.message_queue.put_nowait(_LOG_SENDER_STOP)
+            except queue.Full:
+                pass
 
     def emit(self, record: logging.LogRecord):
         if not self.bot or not self.log_channel_id or record.levelno < logging.WARNING:
@@ -251,6 +285,8 @@ class FluxerLogHandler(logging.Handler):
         while True:
             try:
                 msg = await loop.run_in_executor(None, self.message_queue.get)
+                if msg is _LOG_SENDER_STOP:
+                    break
                 if self.bot and self.log_channel_id:
                     try:
                         channel = await self.bot.fetch_channel(str(self.log_channel_id))
@@ -330,7 +366,7 @@ logger, fluxer_handler = setup_logging(config)
 
 # Optional: use different Fluxer instance (e.g. self-hosted)
 api_url = os.getenv("FLUXER_API_URL", None)
-bot = FluxerToolsBot(command_prefix="!", intents=fluxer.Intents.all(), api_url=api_url)
+bot = FluxerToolsBot(command_prefix="/", intents=fluxer.Intents.all(), api_url=api_url)
 bot.config = config
 bot.logger = logger
 bot.http_mgr = HttpManager()
@@ -372,7 +408,25 @@ bot.send_to_channel = send_to_channel
 # ============ EVENTS ============
 @bot.event
 async def on_message(message):
-    """Debug: log all messages when DEBUG_MODE to verify we receive MESSAGE_CREATE."""
+    """Debug logging + lightweight command suggestions for prefix UX."""
+    if getattr(message.author, "bot", False):
+        return
+    content = getattr(message, "content", "") or ""
+    prefix = bot.command_prefix if isinstance(bot.command_prefix, str) else "/"
+    if prefix and content.startswith(prefix):
+        after = content[len(prefix):].strip()
+        if after:
+            cmd = after.split()[0].lower()
+            known = list(getattr(bot, "_commands", {}).keys())
+            if cmd and cmd not in known:
+                guesses = difflib.get_close_matches(cmd, known, n=3, cutoff=0.5)
+                if guesses:
+                    hint = " · ".join(f"`{prefix}{g}`" for g in guesses)
+                    try:
+                        await message.reply(f"Unknown command `{prefix}{cmd}`. Try: {hint}")
+                    except Exception:
+                        pass
+
     if getattr(config, "DEBUG_MODE", False):
         logger.info("MSG: ch=%s guild=%s author=%s: %r", getattr(message, "channel_id", "?"), getattr(message, "guild_id", "?"), getattr(getattr(message, "author", None), "username", "?"), (getattr(message, "content", "") or "")[:80])
 
@@ -417,13 +471,18 @@ async def _do_shutdown():
     _shutdown_in_progress = True
     logger.info("Shutting down...")
 
-    # 1. Stop Fluxer log handler sender first
-    if fluxer_handler and fluxer_handler.sender_task and not fluxer_handler.sender_task.done():
-        fluxer_handler.sender_task.cancel()
-        try:
-            await asyncio.wait_for(fluxer_handler.sender_task, timeout=2.0)
-        except (asyncio.CancelledError, asyncio.TimeoutError):
-            pass
+    # 1. Stop Fluxer log handler sender first — unblock queue.get() then end task
+    if fluxer_handler:
+        fluxer_handler.request_stop()
+        if fluxer_handler.sender_task and not fluxer_handler.sender_task.done():
+            try:
+                await asyncio.wait_for(fluxer_handler.sender_task, timeout=3.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                fluxer_handler.sender_task.cancel()
+                try:
+                    await fluxer_handler.sender_task
+                except asyncio.CancelledError:
+                    pass
     logger.info("Shutdown: log handler stopped")
 
     # 2. Disconnect voice FIRST (before removing cogs) - LiveKit can block
@@ -450,11 +509,6 @@ async def _do_shutdown():
     logger.info("Shutdown: cogs removed")
 
     await asyncio.sleep(0.3)
-    if hasattr(bot, "executor") and bot.executor:
-        try:
-            bot.executor.shutdown(wait=False)
-        except Exception:
-            pass
 
     try:
         await asyncio.wait_for(bot.http_mgr.close(), timeout=3.0)
@@ -542,12 +596,16 @@ if __name__ == "__main__":
         logger.critical(f"Bot crashed: {e}", exc_info=True)
         raise
     finally:
-        try:
-            loop = asyncio.get_running_loop()
-            if loop.is_running():
-                loop.create_task(graceful_shutdown())
-        except RuntimeError:
-            pass
+        # ThreadPoolExecutor used by cogs must shut down here — _do_shutdown may not
+        # run on KeyboardInterrupt-only exit. Second shutdown is a no-op in recent Python.
+        ex = getattr(bot, "executor", None)
+        if ex is not None:
+            try:
+                ex.shutdown(wait=True, cancel_futures=True)
+            except TypeError:
+                ex.shutdown(wait=True)
+            except RuntimeError:
+                pass
 
     # Optional: keep window open on Windows when run by double-click (no console)
     if os.name == "nt" and os.environ.get("PAUSE_ON_EXIT", "").lower() == "true":

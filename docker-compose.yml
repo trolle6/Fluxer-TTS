@@ -6,7 +6,11 @@ services:
   fluxertools:
     build: .
     restart: unless-stopped
-    env_file: config.env
+    # Optional for platforms like TrueNAS where env vars are injected by app config.
+    # Local docker usage can still keep a config.env file.
+    env_file:
+      - path: config.env
+        required: false
     # Or mount config for easier editing:
     # volumes:
     #   - ./config.env:/app/config.env:ro
