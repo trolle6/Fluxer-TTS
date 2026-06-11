@@ -1,9 +1,33 @@
-# Don't copy into Docker image
+# Git / IDE
 .git
+.gitignore
+.vs
+.idea
+.vscode
+*.user
+*.suo
+
+# Build output
+**/bin
+**/obj
+
+# Secrets and local data
+config.env
+.env
+appsettings.json
+data/
+**/Data/secret_santa_state.json
+**/Data/archive/**
+**/Data/distributed_files/**
+!**/Data/distributed_files/.gitkeep
+
+# Python legacy (not needed in C# image)
+legacy/
 .venv
+venv
 __pycache__
 *.pyc
-.env
-config.env
-bot.log
+
+# Logs
 *.log
+bot.log

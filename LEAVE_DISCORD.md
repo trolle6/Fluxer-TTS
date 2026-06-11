@@ -45,8 +45,20 @@ winget install Gyan.FFmpeg
 
 ## 5. Run
 
+**Docker (easiest on NAS / always-on host):**
+
 ```powershell
-cd WaveTechFluxerTTS\WaveTechFluxerTTS
+copy config.env.example config.env
+# edit config.env
+deploy.bat
+```
+
+Stop: `docker compose down` · Logs: `docker compose logs -f`
+
+**Or local .NET:**
+
+```powershell
+cd WaveTechFluxerTTS
 dotnet run
 ```
 

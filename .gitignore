@@ -25,6 +25,7 @@ bot.log
 *.log
 
 # User data
+data/
 cogs/secret_santa_state.json
 cogs/secret_santa_state.backup
 cogs/archive/*.json

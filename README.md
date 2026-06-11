@@ -50,7 +50,7 @@ Data/
   distributed_files_metadata.json
 ```
 
-## Run
+## Run (local)
 
 ```powershell
 cd WaveTechFluxerTTS
@@ -58,6 +58,26 @@ dotnet run
 ```
 
 Open `WaveTechFluxerTTS.sln` in Visual Studio 2022+.
+
+## Run (Docker)
+
+```powershell
+copy config.env.example config.env
+# Edit config.env — FLUXER_BOT_TOKEN and OPENAI_API_KEY at minimum
+deploy.bat
+```
+
+```bash
+cp config.env.example config.env && ./deploy    # Linux / macOS / NAS
+```
+
+| Command | What it does |
+|---------|----------------|
+| `docker compose up -d --build` | Start bot in background |
+| `docker compose logs -f` | Follow logs |
+| `docker compose down` | Stop and remove container |
+
+Bot data (Secret Santa, distributed files) persists in `./data` on the host.
 
 ## Architecture
 

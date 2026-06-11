@@ -39,16 +39,18 @@ public sealed class BotConfig
 
     public BotConfig(IConfiguration configuration)
     {
-        FluxerBotToken = GetRequired(configuration, "Fluxer:BotToken", "FLUXER_BOT_TOKEN");
-        FluxerApiBaseUrl = configuration["Fluxer:ApiBaseUrl"] ?? "https://api.fluxer.app";
-        FluxerApiVersion = configuration["Fluxer:ApiVersion"] ?? "1";
+        FluxerBotToken = GetRequired(configuration, "Fluxer:BotToken", "FLUXER_BOT_TOKEN", "FLUXER_TOKEN");
+        FluxerApiBaseUrl = ConfigOrEnv(configuration, "Fluxer:ApiBaseUrl", "FLUXER_API_URL") ?? "https://api.fluxer.app";
+        FluxerApiVersion = ConfigOrEnv(configuration, "Fluxer:ApiVersion", "FLUXER_API_VERSION") ?? "1";
         OpenAiApiKey = GetRequired(configuration, "OpenAI:ApiKey", "OPENAI_API_KEY");
 
-        MainChannelId = ParseOptionalUlong(configuration["Fluxer:MainChannelId"] ?? configuration["Tts:AllowedChannelId"]);
-        LogChannelId = ParseOptionalUlong(configuration["Fluxer:LogChannelId"]);
-        ModeratorRoleId = ParseOptionalUlong(configuration["Fluxer:ModeratorRoleId"]);
-        AllowedChannelId = MainChannelId ?? ParseOptionalUlong(configuration["Tts:AllowedChannelId"]);
-        TtsRoleId = ParseOptionalUlong(configuration["Tts:TtsRoleId"]);
+        MainChannelId = ParseOptionalUlong(
+            ConfigOrEnv(configuration, "Fluxer:MainChannelId", "FLUXER_CHANNEL_ID")
+            ?? ConfigOrEnv(configuration, "Tts:AllowedChannelId", "TTS_CHANNEL_ID"));
+        LogChannelId = ParseOptionalUlong(ConfigOrEnv(configuration, "Fluxer:LogChannelId", "FLUXER_LOG_CHANNEL_ID"));
+        ModeratorRoleId = ParseOptionalUlong(ConfigOrEnv(configuration, "Fluxer:ModeratorRoleId", "FLUXER_MODERATOR_ROLE_ID"));
+        AllowedChannelId = MainChannelId ?? ParseOptionalUlong(ConfigOrEnv(configuration, "Tts:AllowedChannelId", "TTS_CHANNEL_ID"));
+        TtsRoleId = ParseOptionalUlong(ConfigOrEnv(configuration, "Tts:TtsRoleId", "TTS_ROLE_ID"));
 
         MaxQueueSize = configuration.GetValue("Tts:MaxQueueSize", 50);
         AutoDisconnectTimeoutSeconds = configuration.GetValue("Tts:AutoDisconnectTimeoutSeconds", 300);
@@ -57,24 +59,42 @@ public sealed class BotConfig
         MaxAudioCacheEntries = configuration.GetValue("Tts:MaxAudioCacheEntries", 50);
         MaxImageCacheEntries = configuration.GetValue("Dalle:MaxCacheEntries", 30);
         DefaultVoice = configuration["Tts:DefaultVoice"] ?? "alloy";
-        DebugMode = configuration.GetValue("DebugMode", false);
-        SkipApiValidation = configuration.GetValue("SkipApiValidation", false);
-        SsDebugStart = configuration.GetValue("SecretSanta:SsDebugStart", false);
+        DebugMode = configuration.GetValue("DebugMode", ParseBool(ConfigOrEnv(configuration, "DebugMode", "DEBUG_MODE"), false));
+        SkipApiValidation = configuration.GetValue("SkipApiValidation", ParseBool(ConfigOrEnv(configuration, "SkipApiValidation", "SKIP_API_VALIDATION"), false));
+        SsDebugStart = configuration.GetValue("SecretSanta:SsDebugStart", ParseBool(ConfigOrEnv(configuration, "SecretSanta:SsDebugStart", "SS_DEBUG_START"), false));
 
-        DataRoot = configuration["Data:Root"] ?? Path.Combine(AppContext.BaseDirectory, "Data");
+        DataRoot = ConfigOrEnv(configuration, "Data:Root", "DATA_ROOT")
+            ?? Path.Combine(AppContext.BaseDirectory, "Data");
         Directory.CreateDirectory(DataRoot);
         Directory.CreateDirectory(ArchiveDir);
         Directory.CreateDirectory(ArchiveBackupsDir);
         Directory.CreateDirectory(DistributedFilesDir);
     }
 
-    private static string GetRequired(IConfiguration configuration, string key, string envKey)
+    private static string? ConfigOrEnv(IConfiguration configuration, string key, string envKey)
+    {
+        var value = configuration[key];
+        if (!string.IsNullOrWhiteSpace(value))
+            return value.Trim();
+        value = Environment.GetEnvironmentVariable(envKey);
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string GetRequired(IConfiguration configuration, string key, params string[] envKeys)
     {
         var value = configuration[key];
         if (string.IsNullOrWhiteSpace(value))
-            value = Environment.GetEnvironmentVariable(envKey);
+        {
+            foreach (var envKey in envKeys)
+            {
+                value = Environment.GetEnvironmentVariable(envKey);
+                if (!string.IsNullOrWhiteSpace(value))
+                    break;
+            }
+        }
         if (string.IsNullOrWhiteSpace(value))
-            throw new InvalidOperationException($"Missing required setting '{key}' or environment variable '{envKey}'.");
+            throw new InvalidOperationException(
+                $"Missing required setting '{key}' or environment variable(s): {string.Join(", ", envKeys)}.");
         return value.Trim();
     }
 
@@ -84,4 +104,14 @@ public sealed class BotConfig
             return null;
         return ulong.TryParse(value.Trim(), out var id) ? id : null;
     }
+
+    private static bool ParseBool(string? value, bool defaultValue) =>
+        string.IsNullOrWhiteSpace(value)
+            ? defaultValue
+            : value.Trim() switch
+            {
+                "1" or "true" or "True" or "yes" or "YES" => true,
+                "0" or "false" or "False" or "no" or "NO" => false,
+                _ => defaultValue
+            };
 }
