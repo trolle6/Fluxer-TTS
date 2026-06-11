@@ -24,9 +24,10 @@ obj/
 bot.log
 *.log
 
-# User data
+# User data (never commit secrets)
 data/
-cogs/secret_santa_state.json
+**/Data/config.env
+WaveTechFluxerTTS/Data/secret_santa_state.json
 cogs/secret_santa_state.backup
 cogs/archive/*.json
 cogs/archive/backups/

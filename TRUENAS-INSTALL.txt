@@ -1,55 +1,52 @@
 ================================================================================
-  FLUXER BOT — TrueNAS Custom App environment variables
+  FLUXER BOT — TrueNAS (reliable config via config.env file on your HDD)
 ================================================================================
+
+TrueNAS often does NOT pass Environment UI vars into the container.
+Use a config.env file on your mounted storage instead.
 
 Git repo:  https://github.com/trolle6/Fluxer-TTS
 Branch:    master
 Compose:   docker-compose.yml
 
-Storage:   Host path on your pool  →  Mount path /app/Data
+--------------------------------------------------------------------------------
+STEP 1 — Storage (pick your HDD / pool)
+--------------------------------------------------------------------------------
+  Host Path:   /mnt/YOURPOOL/apps/fluxer/data
+  Mount Path:  /app/Data
 
 --------------------------------------------------------------------------------
-REQUIRED (bot will not start without these)
+STEP 2 — Create config.env ON THE NAS (SSH or TrueNAS file manager)
 --------------------------------------------------------------------------------
-  FLUXER_BOT_TOKEN          your Fluxer bot token
-  OPENAI_API_KEY            your OpenAI API key
 
---------------------------------------------------------------------------------
-RECOMMENDED (set these for full functionality)
---------------------------------------------------------------------------------
-  FLUXER_CHANNEL_ID         main text channel ID (TTS reads from here by default)
-  FLUXER_LOG_CHANNEL_ID     log channel ID
-  FLUXER_MODERATOR_ROLE_ID  moderator role ID (Secret Santa admin commands)
+  sudo nano /mnt/YOURPOOL/apps/fluxer/data/config.env
 
---------------------------------------------------------------------------------
-OPTIONAL (leave blank if you don't need them)
---------------------------------------------------------------------------------
-  TTS_CHANNEL_ID            separate channel for TTS text only
-                            (if blank, uses FLUXER_CHANNEL_ID)
+Paste (fill in your values):
 
-  TTS_ROLE_ID               only members with this role can use TTS
-                            (if blank, everyone in voice can use TTS)
+  FLUXER_BOT_TOKEN=paste_your_fluxer_token_here
+  OPENAI_API_KEY=paste_your_openai_key_here
+  FLUXER_CHANNEL_ID=your_channel_id
+  FLUXER_LOG_CHANNEL_ID=your_log_channel_id
+  FLUXER_MODERATOR_ROLE_ID=your_mod_role_id
+  TTS_ROLE_ID=your_tts_role_id_if_you_use_one
 
-  FLUXER_API_URL            only if not using official api.fluxer.app
+Save the file.
 
-  TTS_DEFAULT_VOICE         alloy, echo, nova, etc. (default: alloy)
-
-  MAX_QUEUE_SIZE            TTS queue cap (default: 50)
-  RATE_LIMIT_REQUESTS       TTS rate limit count (default: 15)
-  RATE_LIMIT_WINDOW         TTS rate limit seconds (default: 60)
-  MAX_TTS_CACHE             TTS audio cache entries (default: 50)
-  AUTO_DISCONNECT_TIMEOUT   leave VC after idle seconds (default: 300)
-  MAX_IMAGE_CACHE           DALL-E cache entries (default: 30)
-
-  DEBUG_MODE                true / false (default: false)
-  SKIP_API_VALIDATION       true / false (default: false)
-  SS_DEBUG_START            allow /ss start when archive exists (default: false)
+Template in repo: WaveTechFluxerTTS/Data/config.env.example
 
 --------------------------------------------------------------------------------
-NOT NEEDED IN TRUENAS UI
+STEP 3 — Install / upgrade Custom App
 --------------------------------------------------------------------------------
-  DATA_ROOT                 already set to /app/Data in compose
+  Apps → Custom App → repo URL above
+  Environment UI: leave empty (optional) — config.env is what matters
+  Storage: as in step 1
+  Install or Upgrade
+
+--------------------------------------------------------------------------------
+STEP 4 — Restart and check logs
+--------------------------------------------------------------------------------
+  Should NOT say "Missing FLUXER_BOT_TOKEN" anymore.
+
+Optional vars: see config.env.example in the GitHub repo.
 
 ================================================================================
-
-After editing env vars: Save → Upgrade/Redeploy (or Stop → Start).
