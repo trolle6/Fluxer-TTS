@@ -7,15 +7,15 @@ namespace WaveTechFluxerTTS.Fluxer;
 
 public sealed class GatewayClient : IAsyncDisposable
 {
-    private const int Intents =
-        (1 << 0) | (1 << 1) | (1 << 7) | (1 << 9) | (1 << 15) | (1 << 10);
+    // Match fluxer.py Intents.all() — partial intents can cause immediate disconnect on some hosts.
+    private const int Intents = 3276799;
 
     private readonly BotConfig _config;
     private readonly FluxerRestApi _rest;
     private ClientWebSocket? _socket;
     private CancellationTokenSource? _receiveCts;
     private int? _heartbeatIntervalMs;
-    private int _lastSequence;
+    private int? _lastSequence;
     private Task? _heartbeatTask;
     private Task? _receiveTask;
 
@@ -63,6 +63,8 @@ public sealed class GatewayClient : IAsyncDisposable
             if (cancellationToken.IsCancellationRequested)
                 break;
 
+            Console.WriteLine($"Gateway disconnected. Reconnecting in {delay.TotalSeconds}s...");
+
             try
             {
                 await Task.Delay(delay, cancellationToken);
@@ -84,7 +86,7 @@ public sealed class GatewayClient : IAsyncDisposable
         await _socket.ConnectAsync(new Uri(wsUrl), cancellationToken);
         _receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _receiveTask = ReceiveLoopAsync(_receiveCts.Token);
-        Console.WriteLine("Gateway connected.");
+        Console.WriteLine("Gateway WebSocket open, waiting for HELLO…");
     }
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
@@ -98,7 +100,12 @@ public sealed class GatewayClient : IAsyncDisposable
             {
                 result = await _socket.ReceiveAsync(buffer, cancellationToken);
                 if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    var code = _socket.CloseStatus;
+                    var reason = _socket.CloseStatusDescription ?? "(no reason)";
+                    Console.WriteLine($"Gateway WebSocket closed: {code} {reason}");
                     return;
+                }
                 ms.Write(buffer, 0, result.Count);
             } while (!result.EndOfMessage);
 
@@ -126,10 +133,20 @@ public sealed class GatewayClient : IAsyncDisposable
                     _lastSequence = seq.GetInt32();
                 await HandleDispatchAsync(root.GetProperty("t").GetString(), root.GetProperty("d"));
                 break;
+            case 7:
+                Console.WriteLine("Gateway requested reconnect (op 7).");
+                return;
             case 9:
-                await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+            {
+                var resumable = root.TryGetProperty("d", out var d) && d.ValueKind == JsonValueKind.True;
+                Console.WriteLine(resumable
+                    ? "Invalid session (resumable) — re-identifying…"
+                    : "Invalid session (NOT resumable). Stop other bots using this token, regenerate token if needed.");
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                _lastSequence = null;
                 await SendIdentifyAsync(cancellationToken);
                 break;
+            }
         }
     }
 
@@ -194,7 +211,7 @@ public sealed class GatewayClient : IAsyncDisposable
                 intents = Intents,
                 properties = new Dictionary<string, string>
                 {
-                    ["$os"] = "windows",
+                    ["$os"] = "linux",
                     ["$browser"] = "WaveTechFluxerToolbox",
                     ["$device"] = "WaveTechFluxerToolbox"
                 }
@@ -202,8 +219,12 @@ public sealed class GatewayClient : IAsyncDisposable
         }, cancellationToken);
     }
 
-    private Task SendHeartbeatAsync(CancellationToken cancellationToken) =>
-        SendJsonAsync(new { op = 1, d = _lastSequence }, cancellationToken);
+    private Task SendHeartbeatAsync(CancellationToken cancellationToken)
+    {
+        // Discord/Fluxer expect null until the first dispatch sequence is received — not 0.
+        object? seq = _lastSequence;
+        return SendJsonAsync(new { op = 1, d = seq }, cancellationToken);
+    }
 
     public Task UpdateVoiceStateAsync(ulong guildId, ulong? channelId, CancellationToken cancellationToken) =>
         SendJsonAsync(new

@@ -1,11 +1,12 @@
 # Template for TrueNAS Custom App (no secrets). See truenas-app.local.yml on your PC.
+# Use restart: unless-stopped (not on-failure:3) so reconnect loops don't kill the app.
 
 services:
   fluxer:
     image: ghcr.io/trolle6/fluxer-tts:latest
     platform: linux/amd64
     pull_policy: always
-    restart: on-failure:3
+    restart: unless-stopped
     privileged: false
     stdin_open: false
     tty: false
