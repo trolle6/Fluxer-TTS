@@ -10,14 +10,15 @@
    Branch:        master
    Compose file:  docker-compose.yml   (default — leave as-is)
 
-3. Environment Variables  (Apps wizard — ADD EACH ONE):
+3. Environment Variables  (Custom App → Edit → Environment — names MUST match exactly):
 
-     FLUXER_BOT_TOKEN          =  (your Fluxer bot token)
-     OPENAI_API_KEY            =  (your OpenAI key)
-     DATA_ROOT                 =  /app/Data
-     FLUXER_LOG_CHANNEL_ID     =  (your log channel ID)
-     FLUXER_MODERATOR_ROLE_ID  =  (your mod role ID)
-     FLUXER_CHANNEL_ID         =  (your text channel ID)
+     FLUXER_BOT_TOKEN          =  paste your Fluxer bot token here
+     OPENAI_API_KEY            =  paste your OpenAI key here
+     FLUXER_LOG_CHANNEL_ID     =  numeric channel ID
+     FLUXER_MODERATOR_ROLE_ID  =  numeric role ID
+     FLUXER_CHANNEL_ID         =  numeric channel ID
+
+     (DATA_ROOT is set in compose as /app/Data — do not skip the token and key!)
 
 4. Storage → Add → Host Path:
 

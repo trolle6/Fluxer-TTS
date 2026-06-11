@@ -2,3 +2,10 @@ services:
   fluxer:
     image: ghcr.io/trolle6/fluxer-tts:latest
     restart: unless-stopped
+    environment:
+      FLUXER_BOT_TOKEN: ${FLUXER_BOT_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      FLUXER_LOG_CHANNEL_ID: ${FLUXER_LOG_CHANNEL_ID}
+      FLUXER_MODERATOR_ROLE_ID: ${FLUXER_MODERATOR_ROLE_ID}
+      FLUXER_CHANNEL_ID: ${FLUXER_CHANNEL_ID}
+      DATA_ROOT: /app/Data
