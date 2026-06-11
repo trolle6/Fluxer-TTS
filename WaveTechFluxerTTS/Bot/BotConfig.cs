@@ -10,6 +10,7 @@ public sealed class BotConfig
     public string OpenAiApiKey { get; }
     public ulong? MainChannelId { get; }
     public ulong? LogChannelId { get; }
+    public ulong? GuildId { get; }
     public ulong? ModeratorRoleId { get; }
     public ulong? AllowedChannelId { get; }
     public ulong? TtsRoleId { get; }
@@ -48,6 +49,7 @@ public sealed class BotConfig
             ConfigOrEnv(configuration, "Fluxer:MainChannelId", "FLUXER_CHANNEL_ID")
             ?? ConfigOrEnv(configuration, "Tts:AllowedChannelId", "TTS_CHANNEL_ID"));
         LogChannelId = ParseOptionalUlong(ConfigOrEnv(configuration, "Fluxer:LogChannelId", "FLUXER_LOG_CHANNEL_ID"));
+        GuildId = ParseOptionalUlong(ConfigOrEnv(configuration, "Fluxer:GuildId", "FLUXER_GUILD_ID"));
         ModeratorRoleId = ParseOptionalUlong(ConfigOrEnv(configuration, "Fluxer:ModeratorRoleId", "FLUXER_MODERATOR_ROLE_ID"));
         AllowedChannelId = MainChannelId ?? ParseOptionalUlong(ConfigOrEnv(configuration, "Tts:AllowedChannelId", "TTS_CHANNEL_ID"));
         TtsRoleId = ParseOptionalUlong(ConfigOrEnv(configuration, "Tts:TtsRoleId", "TTS_ROLE_ID"));

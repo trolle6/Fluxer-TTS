@@ -157,7 +157,11 @@ public sealed class GatewayClient : IAsyncDisposable
             case "READY":
                 BotUserId = ulong.Parse(data.GetProperty("user").GetProperty("id").GetString()!);
                 Console.WriteLine($"Logged in as {data.GetProperty("user").GetProperty("username").GetString()} (id {BotUserId})");
-                if (Ready is not null) await Ready();
+                if (Ready is not null)
+                {
+                    try { await Ready(); }
+                    catch (Exception ex) { Console.WriteLine($"Ready handler error: {ex.Message}"); }
+                }
                 break;
             case "MESSAGE_CREATE":
                 if (MessageCreated is not null) await MessageCreated(data);

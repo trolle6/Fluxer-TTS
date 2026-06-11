@@ -45,20 +45,40 @@ public sealed class FluxerRestApi
         return _applicationId.Value;
     }
 
-    public async Task RegisterGlobalCommandsAsync(JsonNode[] commands, CancellationToken cancellationToken)
+    public async Task RegisterCommandsAsync(JsonNode[] commands, ulong? guildId, CancellationToken cancellationToken)
     {
         var appId = await GetApplicationIdAsync(cancellationToken);
         var json = JsonSerializer.Serialize(commands);
-        using var request = new HttpRequestMessage(HttpMethod.Put, $"applications/{appId}/commands")
+
+        var attempts = new List<string>
         {
-            Content = new StringContent(json, Encoding.UTF8, "application/json")
+            $"applications/{appId}/commands"
         };
-        using var response = await _http.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        if (guildId is { } gid)
+            attempts.Add($"applications/{appId}/guilds/{gid}/commands");
+        attempts.Add("applications/@me/commands");
+
+        foreach (var path in attempts)
         {
+            using var request = new HttpRequestMessage(HttpMethod.Put, path)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            using var response = await _http.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"Slash commands registered via {path}.");
+                return;
+            }
+
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            Console.WriteLine($"Command registration {path} failed: {(int)response.StatusCode} {body}");
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                continue;
             throw new InvalidOperationException($"Command registration failed: {(int)response.StatusCode} {body}");
         }
+
+        Console.WriteLine("Slash command API not available on this Fluxer instance (404). Auto-TTS and message handling still work.");
     }
 
     public async Task RespondToInteractionAsync(
@@ -134,7 +154,20 @@ public sealed class FluxerRestApi
 
     public async Task SendMessageAsync(ulong channelId, string content, CancellationToken cancellationToken, JsonNode? embeds = null)
     {
-        _ = await CreateMessageAsync(channelId, content, cancellationToken, embeds);
+        await TryCreateMessageAsync(channelId, content, cancellationToken, embeds);
+    }
+
+    public async Task<ulong?> TryCreateMessageAsync(ulong channelId, string content, CancellationToken cancellationToken, JsonNode? embeds = null)
+    {
+        try
+        {
+            return await CreateMessageAsync(channelId, content, cancellationToken, embeds);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"POST channels/{channelId}/messages failed: {ex.Message}");
+            return null;
+        }
     }
 
     public async Task<ulong> CreateMessageAsync(ulong channelId, string content, CancellationToken cancellationToken, JsonNode? embeds = null)

@@ -89,8 +89,7 @@ public sealed class BotHost : IAsyncDisposable
     {
         try
         {
-            await _rest.RegisterGlobalCommandsAsync(CommandDefinitions.AllCommands, _cts.Token);
-            _log.Info("Slash commands registered.");
+            await _rest.RegisterCommandsAsync(CommandDefinitions.AllCommands, _config.GuildId, _cts.Token);
         }
         catch (Exception ex)
         {
@@ -98,7 +97,11 @@ public sealed class BotHost : IAsyncDisposable
         }
 
         if (_config.LogChannelId is { } logCh)
-            await _rest.SendMessageAsync(logCh, "WaveTech Fluxer Toolbox is online.", _cts.Token);
+        {
+            var sent = await _rest.TryCreateMessageAsync(logCh, "WaveTech Fluxer Toolbox is online.", _cts.Token);
+            if (sent is null)
+                _log.Warning("Could not post to log channel (403?). Check bot permissions in that channel.");
+        }
     }
 
     public void Stop() => _cts.Cancel();
