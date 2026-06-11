@@ -1,113 +1,177 @@
-# TrueNAS SCALE — Fluxer-TTS
+# TrueNAS SCALE — install Fluxer-TTS as an App
 
-The UI error `EFAULT` / `Failed 'up' action` is generic. The **real** error is almost always one of the items below.
+> **SSH `docker pull` does NOT install an app.** It only caches the image on disk.  
+> To see it under **Apps → Installed Applications**, you must deploy through the TrueNAS UI.
 
-## Do this first (SSH or SCALE Shell)
+---
+
+## Method A — Launch Docker Image (easiest)
+
+Use this if your SCALE version has **Launch Docker Image** on the Discover Apps page.
+
+### 1. Remove the old failed app
+
+**Apps → Installed Applications** → if `fluxertts` exists (Stopped/Failed) → **Delete**.
+
+### 2. Start the wizard
+
+**Apps → Discover Apps** → **Launch Docker Image**  
+*(If you don't see it: use Method B below.)*
+
+### 3. Application name
+
+| Field | Value |
+|-------|--------|
+| **Application Name** | `fluxer-bot` |
+
+### 4. Image
+
+| Field | Value |
+|-------|--------|
+| **Image Repository** | `ghcr.io/trolle6/fluxer-tts` |
+| **Image Tag** | `latest` |
+| **Pull Policy** | Pull if not present *(or Always)* |
+
+### 5. Container settings
+
+**Restart Policy:** `Unless Stopped`
+
+**Environment variables** — click **Add** for each:
+
+| Name | Value |
+|------|--------|
+| `FLUXER_BOT_TOKEN` | *(your Fluxer bot token)* |
+| `OPENAI_API_KEY` | *(your OpenAI key)* |
+| `DATA_ROOT` | `/app/Data` |
+| `FLUXER_LOG_CHANNEL_ID` | *(your log channel ID)* |
+| `FLUXER_MODERATOR_ROLE_ID` | *(your mod role ID)* |
+| `FLUXER_CHANNEL_ID` | *(your main/TTS channel ID)* |
+
+Leave optional vars empty if you don't use them.
+
+### 6. Storage (pick your HDD / pool)
+
+**Add** → **Host Path**:
+
+| Field | Value |
+|-------|--------|
+| **Host Path** | e.g. `/mnt/tank/apps/fluxer-bot/data` — browse to your pool |
+| **Mount Path** | `/app/Data` |
+| **Enable ACL** | Off (unless you know you need it) |
+| **Create directory if missing** | On |
+
+Create the folder first if you like:
+```bash
+sudo mkdir -p /mnt/tank/apps/fluxer-bot/data
+```
+*(Replace `tank` with your pool name.)*
+
+### 7. Install
+
+Click **Save** / **Install**. Wait until status shows **Running**.
+
+### 8. Check logs
+
+**Apps → Installed Applications → fluxer-bot → Logs**
+
+You should see the bot connect. If it crashes immediately, you're usually missing `FLUXER_BOT_TOKEN` or `OPENAI_API_KEY`.
+
+---
+
+## Method B — Custom App (Compose from GitHub)
+
+Use this if **Launch Docker Image** isn't available, or Method A failed.
+
+### 1. Delete failed app (same as above)
+
+### 2. Custom App
+
+**Apps → Discover Apps → Custom App**
+
+### 3. Install via Compose
+
+Choose **Install via Compose** (or paste YAML).
+
+**Compose file URL** (raw GitHub):
+```
+https://raw.githubusercontent.com/trolle6/Fluxer-TTS/master/docker-compose.truenas.yml
+```
+
+Or paste the contents of `docker-compose.truenas.yml` from the repo.
+
+**Do NOT** use the root `docker-compose.yml` — it used to include `build:` and breaks on TrueNAS.
+
+### 4. Environment
+
+In the **Environment** section of the wizard, set the same variables as Method A step 5.  
+TrueNAS substitutes `${FLUXER_BOT_TOKEN}` etc. from what you enter here.
+
+### 5. Storage
+
+Same as Method A step 6 — **Host Path** → `/app/Data`.
+
+Compose file intentionally has **no volumes** block; TrueNAS adds storage in the UI.
+
+### 6. Install and check logs
+
+---
+
+## GHCR must be public
+
+Your `docker pull` already worked — good. If the **App** install fails on pull:
+
+GitHub → **Packages** → **fluxer-tts** → **Package settings** → **Public**
+
+---
+
+## If install still fails (EFAULT)
+
+SSH to the NAS:
 
 ```bash
 tail -n 200 /var/log/app_lifecycle.log
 ```
 
-Scroll to the **first** `ERROR` (not just the final `EFAULT` line).
+| Log says | Fix |
+|----------|-----|
+| `build` / `Dockerfile` | Wrong compose file — use `docker-compose.truenas.yml` |
+| `pull access denied` | Make GHCR package public |
+| `invalid compose` | Use Method A (Launch Docker Image) instead |
+| Container exits | Fix env vars; check App **Logs** tab |
 
 ---
 
-## Correct setup (Custom App)
+## Migrating old bot data
 
-### 1. Use the GHCR image — do NOT use `build:`
-
-TrueNAS **cannot** run `build: .` from the GitHub repo. You must pull a pre-built image:
+Copy into the host path you mounted (e.g. `/mnt/tank/apps/fluxer-bot/data/`):
 
 ```
-ghcr.io/trolle6/fluxer-tts:latest
+secret_santa_state.json
+archive/
+distributed_files/
+distributed_files_metadata.json
 ```
 
-In **Custom App** → use compose file **`docker-compose.truenas.yml`** from the repo,  
-**or** paste the YAML from that file.  
-Do **not** deploy with the root `docker-compose.yml` (it tries to build locally).
+Stop the app → copy files → start the app.
 
-### 2. Make the GHCR package public (one time)
+---
 
-If pull fails with **401 / denied / manifest unknown**:
+## SSH test (optional — NOT a TrueNAS App)
 
-1. Open [github.com/trolle6?tab=packages](https://github.com/trolle6?tab=packages)
-2. Click **fluxer-tts**
-3. **Package settings** → **Change visibility** → **Public**
-
-Test from the NAS shell:
+This runs the bot outside the Apps system (won't show in Installed Applications):
 
 ```bash
-docker pull ghcr.io/trolle6/fluxer-tts:latest
-```
+sudo mkdir -p /mnt/tank/apps/fluxer-bot/data
 
-That must succeed before the app will start.
-
-### 3. Environment variables (required)
-
-Set these in the app **Environment** section (exact names):
-
-| Variable | Required |
-|----------|----------|
-| `FLUXER_BOT_TOKEN` | Yes |
-| `OPENAI_API_KEY` | Yes |
-| `FLUXER_LOG_CHANNEL_ID` | Recommended |
-| `FLUXER_MODERATOR_ROLE_ID` | Recommended |
-| `FLUXER_CHANNEL_ID` | Recommended |
-
-Also set (fixed value):
-
-| Variable | Value |
-|----------|--------|
-| `DATA_ROOT` | `/app/Data` |
-
-Optional tuning vars are in `config.env.example`; the bot uses sane defaults if omitted.
-
-### 4. Storage (pick your HDD / pool)
-
-**Storage** → **Add** → **Host Path**:
-
-| Field | Value |
-|-------|--------|
-| **Host Path** | e.g. `/mnt/tank/apps/fluxer-bot/data` (browse to your pool) |
-| **Mount Path** | `/app/Data` |
-| **Type** | Directory |
-
-This is where Secret Santa + distribute files live. Copy old `cogs/` data here before first run if migrating.
-
-### 5. Deploy
-
-Save → **Install**. If it fails again, re-check `app_lifecycle.log`.
-
----
-
-## Common `app_lifecycle.log` errors
-
-| Log message | Fix |
-|-------------|-----|
-| `build` / `Dockerfile` / `unable to prepare context` | You used `docker-compose.yml` with `build:` — switch to `docker-compose.truenas.yml` or image-only compose |
-| `pull access denied` / `401` | Make GHCR package **public** or add registry credentials in TrueNAS |
-| `manifest unknown` | Image not published yet — check [GitHub Actions](https://github.com/trolle6/Fluxer-TTS/actions) for green build |
-| `invalid compose` / `mapping values` | Use `docker-compose.truenas.yml` (no `${VAR:-default}` syntax) |
-| Container starts then exits | Missing `FLUXER_BOT_TOKEN` or `OPENAI_API_KEY` — check app **Logs** tab |
-
----
-
-## Manual test (SSH)
-
-```bash
-docker pull ghcr.io/trolle6/fluxer-tts:latest
-
-mkdir -p /mnt/tank/apps/fluxer-bot/data
-
-docker run -d --name fluxer-test \
-  -e FLUXER_BOT_TOKEN="your_token" \
-  -e OPENAI_API_KEY="your_key" \
+sudo docker run -d --name fluxer-test \
+  -e FLUXER_BOT_TOKEN="YOUR_TOKEN" \
+  -e OPENAI_API_KEY="YOUR_KEY" \
   -e DATA_ROOT=/app/Data \
   -v /mnt/tank/apps/fluxer-bot/data:/app/Data \
   --restart unless-stopped \
   ghcr.io/trolle6/fluxer-tts:latest
 
-docker logs -f fluxer-test
+sudo docker logs -f fluxer-test
 ```
 
-If that works, mirror the same image, env, and volume in the TrueNAS UI.
+Use this only to verify the image works; for a managed app, use Method A or B above.
