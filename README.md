@@ -61,6 +61,16 @@ Open `WaveTechFluxerTTS.sln` in Visual Studio 2022+.
 
 ## Run (Docker)
 
+**Pull from GHCR (no build — after the GitHub Action has run once):**
+
+```bash
+docker compose -f docker-compose.ghcr.yml --env-file config.env up -d
+```
+
+Image: **`ghcr.io/trolle6/fluxer-tts:latest`**
+
+**Or build locally from source:**
+
 ```powershell
 copy config.env.example config.env
 # Edit config.env — FLUXER_BOT_TOKEN and OPENAI_API_KEY at minimum
@@ -73,11 +83,14 @@ cp config.env.example config.env && ./deploy    # Linux / macOS / NAS
 
 | Command | What it does |
 |---------|----------------|
-| `docker compose up -d --build` | Start bot in background |
+| `docker compose up -d --build` | Build image locally and start |
+| `docker compose -f docker-compose.ghcr.yml up -d` | Pull from GHCR and start |
 | `docker compose logs -f` | Follow logs |
 | `docker compose down` | Stop and remove container |
 
 Bot data (Secret Santa, distributed files) persists in `./data` on the host.
+
+**TrueNAS:** mount host path → `/app/Data` (pick your pool/HDD there). Use the GHCR image in the app settings: `ghcr.io/trolle6/fluxer-tts:latest`.
 
 ## Architecture
 
