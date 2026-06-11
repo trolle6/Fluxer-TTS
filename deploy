@@ -15,7 +15,7 @@ fi
 mkdir -p data
 
 echo "Building and starting fluxer-bot..."
-docker compose --env-file config.env up -d --build
+docker compose -f docker-compose.build.yml --env-file config.env up -d --build
 
 echo ""
 echo "Bot is running."

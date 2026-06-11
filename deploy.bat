@@ -12,7 +12,7 @@ if not exist config.env (
 if not exist data mkdir data
 
 echo Building and starting fluxer-bot...
-docker compose --env-file config.env up -d --build
+docker compose -f docker-compose.build.yml --env-file config.env up -d --build
 if errorlevel 1 exit /b 1
 
 echo.

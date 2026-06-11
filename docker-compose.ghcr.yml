@@ -3,9 +3,10 @@
 #   docker compose -f docker-compose.ghcr.yml --env-file config.env up -d
 #   docker compose -f docker-compose.ghcr.yml down
 #
+# TrueNAS SCALE: use docker-compose.truenas.yml instead — see TRUENAS.md
+#
 # First time: package must be public at
 #   https://github.com/users/trolle6/packages/container/fluxer-tts/settings
-# (GitHub → Packages → fluxer-tts → Package settings → Change visibility)
 
 services:
   fluxer-bot:

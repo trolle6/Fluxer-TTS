@@ -90,7 +90,7 @@ cp config.env.example config.env && ./deploy    # Linux / macOS / NAS
 
 Bot data (Secret Santa, distributed files) persists in `./data` on the host.
 
-**TrueNAS:** mount host path → `/app/Data` (pick your pool/HDD there). Use the GHCR image in the app settings: `ghcr.io/trolle6/fluxer-tts:latest`.
+**TrueNAS SCALE?** See **[TRUENAS.md](TRUENAS.md)** — use `docker-compose.truenas.yml` and image `ghcr.io/trolle6/fluxer-tts:latest` (do not use `build:`).
 
 ## Architecture
 

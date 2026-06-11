@@ -1,0 +1,20 @@
+# TrueNAS SCALE — pull-only, no local build.
+# Custom App: paste this file OR point install at docker-compose.truenas.yml
+# See TRUENAS.md
+
+services:
+  fluxer-bot:
+    image: ghcr.io/trolle6/fluxer-tts:latest
+    restart: unless-stopped
+    environment:
+      FLUXER_BOT_TOKEN: ${FLUXER_BOT_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      FLUXER_LOG_CHANNEL_ID: ${FLUXER_LOG_CHANNEL_ID}
+      FLUXER_MODERATOR_ROLE_ID: ${FLUXER_MODERATOR_ROLE_ID}
+      FLUXER_CHANNEL_ID: ${FLUXER_CHANNEL_ID}
+      TTS_CHANNEL_ID: ${TTS_CHANNEL_ID}
+      TTS_ROLE_ID: ${TTS_ROLE_ID}
+      FLUXER_API_URL: ${FLUXER_API_URL}
+      DEBUG_MODE: ${DEBUG_MODE}
+      SKIP_API_VALIDATION: ${SKIP_API_VALIDATION}
+      DATA_ROOT: /app/Data

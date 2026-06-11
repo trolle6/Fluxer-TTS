@@ -1,14 +1,11 @@
-# Default: pull from GHCR (works on NAS, Windows, Linux without building).
-# Local build: docker compose -f docker-compose.build.yml up -d --build
-# TrueNAS:    use docker-compose.truenas.yml — see TRUENAS.md
+# Local build from source (not for TrueNAS — use docker-compose.truenas.yml there).
 #
-#   docker compose --env-file config.env up -d
-#   docker compose down
-#   docker compose logs -f
+#   docker compose -f docker-compose.build.yml --env-file config.env up -d --build
 
 services:
   fluxer-bot:
-    image: ghcr.io/trolle6/fluxer-tts:latest
+    build: .
+    image: trolle6/fluxer-tts:latest
     container_name: fluxer-bot
     restart: unless-stopped
     environment:
