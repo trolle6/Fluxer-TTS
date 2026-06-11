@@ -52,13 +52,13 @@ public sealed class BotConfig
         AllowedChannelId = MainChannelId ?? ParseOptionalUlong(ConfigOrEnv(configuration, "Tts:AllowedChannelId", "TTS_CHANNEL_ID"));
         TtsRoleId = ParseOptionalUlong(ConfigOrEnv(configuration, "Tts:TtsRoleId", "TTS_ROLE_ID"));
 
-        MaxQueueSize = configuration.GetValue("Tts:MaxQueueSize", 50);
-        AutoDisconnectTimeoutSeconds = configuration.GetValue("Tts:AutoDisconnectTimeoutSeconds", 300);
-        RateLimitRequests = configuration.GetValue("Tts:RateLimitRequests", 15);
-        RateLimitWindowSeconds = configuration.GetValue("Tts:RateLimitWindowSeconds", 60);
-        MaxAudioCacheEntries = configuration.GetValue("Tts:MaxAudioCacheEntries", 50);
-        MaxImageCacheEntries = configuration.GetValue("Dalle:MaxCacheEntries", 30);
-        DefaultVoice = configuration["Tts:DefaultVoice"] ?? "alloy";
+        MaxQueueSize = ParseIntConfig(configuration, "Tts:MaxQueueSize", "MAX_QUEUE_SIZE", 50);
+        AutoDisconnectTimeoutSeconds = ParseIntConfig(configuration, "Tts:AutoDisconnectTimeoutSeconds", "AUTO_DISCONNECT_TIMEOUT", 300);
+        RateLimitRequests = ParseIntConfig(configuration, "Tts:RateLimitRequests", "RATE_LIMIT_REQUESTS", 15);
+        RateLimitWindowSeconds = ParseIntConfig(configuration, "Tts:RateLimitWindowSeconds", "RATE_LIMIT_WINDOW", 60);
+        MaxAudioCacheEntries = ParseIntConfig(configuration, "Tts:MaxAudioCacheEntries", "MAX_TTS_CACHE", 50);
+        MaxImageCacheEntries = ParseIntConfig(configuration, "Dalle:MaxCacheEntries", "MAX_IMAGE_CACHE", 30);
+        DefaultVoice = ConfigOrEnv(configuration, "Tts:DefaultVoice", "TTS_DEFAULT_VOICE") ?? "alloy";
         DebugMode = configuration.GetValue("DebugMode", ParseBool(ConfigOrEnv(configuration, "DebugMode", "DEBUG_MODE"), false));
         SkipApiValidation = configuration.GetValue("SkipApiValidation", ParseBool(ConfigOrEnv(configuration, "SkipApiValidation", "SKIP_API_VALIDATION"), false));
         SsDebugStart = configuration.GetValue("SecretSanta:SsDebugStart", ParseBool(ConfigOrEnv(configuration, "SecretSanta:SsDebugStart", "SS_DEBUG_START"), false));
@@ -114,4 +114,12 @@ public sealed class BotConfig
                 "0" or "false" or "False" or "no" or "NO" => false,
                 _ => defaultValue
             };
+
+    private static int ParseIntConfig(IConfiguration configuration, string key, string envKey, int defaultValue)
+    {
+        var env = Environment.GetEnvironmentVariable(envKey);
+        if (!string.IsNullOrWhiteSpace(env) && int.TryParse(env.Trim(), out var fromEnv))
+            return fromEnv;
+        return configuration.GetValue(key, defaultValue);
+    }
 }

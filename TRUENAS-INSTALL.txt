@@ -1,41 +1,55 @@
 ================================================================================
-  FLUXER BOT — TrueNAS Custom App (paste GitHub repo, install)
+  FLUXER BOT — TrueNAS Custom App environment variables
 ================================================================================
 
-1. Apps → Discover Apps → Custom App
+Git repo:  https://github.com/trolle6/Fluxer-TTS
+Branch:    master
+Compose:   docker-compose.yml
 
-2. Git repository:
-     https://github.com/trolle6/Fluxer-TTS
+Storage:   Host path on your pool  →  Mount path /app/Data
 
-   Branch:        master
-   Compose file:  docker-compose.yml   (default — leave as-is)
+--------------------------------------------------------------------------------
+REQUIRED (bot will not start without these)
+--------------------------------------------------------------------------------
+  FLUXER_BOT_TOKEN          your Fluxer bot token
+  OPENAI_API_KEY            your OpenAI API key
 
-3. Environment Variables  (Custom App → Edit → Environment — names MUST match exactly):
+--------------------------------------------------------------------------------
+RECOMMENDED (set these for full functionality)
+--------------------------------------------------------------------------------
+  FLUXER_CHANNEL_ID         main text channel ID (TTS reads from here by default)
+  FLUXER_LOG_CHANNEL_ID     log channel ID
+  FLUXER_MODERATOR_ROLE_ID  moderator role ID (Secret Santa admin commands)
 
-     FLUXER_BOT_TOKEN          =  paste your Fluxer bot token here
-     OPENAI_API_KEY            =  paste your OpenAI key here
-     FLUXER_LOG_CHANNEL_ID     =  numeric channel ID
-     FLUXER_MODERATOR_ROLE_ID  =  numeric role ID
-     FLUXER_CHANNEL_ID         =  numeric channel ID
+--------------------------------------------------------------------------------
+OPTIONAL (leave blank if you don't need them)
+--------------------------------------------------------------------------------
+  TTS_CHANNEL_ID            separate channel for TTS text only
+                            (if blank, uses FLUXER_CHANNEL_ID)
 
-     (DATA_ROOT is set in compose as /app/Data — do not skip the token and key!)
+  TTS_ROLE_ID               only members with this role can use TTS
+                            (if blank, everyone in voice can use TTS)
 
-4. Storage → Add → Host Path:
+  FLUXER_API_URL            only if not using official api.fluxer.app
 
-     Host Path:   /mnt/YOURPOOL/apps/fluxer/data
-     Mount Path:  /app/Data
+  TTS_DEFAULT_VOICE         alloy, echo, nova, etc. (default: alloy)
 
-     (Replace YOURPOOL with your pool name, e.g. tank)
+  MAX_QUEUE_SIZE            TTS queue cap (default: 50)
+  RATE_LIMIT_REQUESTS       TTS rate limit count (default: 15)
+  RATE_LIMIT_WINDOW         TTS rate limit seconds (default: 60)
+  MAX_TTS_CACHE             TTS audio cache entries (default: 50)
+  AUTO_DISCONNECT_TIMEOUT   leave VC after idle seconds (default: 300)
+  MAX_IMAGE_CACHE           DALL-E cache entries (default: 30)
 
-5. Install
+  DEBUG_MODE                true / false (default: false)
+  SKIP_API_VALIDATION       true / false (default: false)
+  SS_DEBUG_START            allow /ss start when archive exists (default: false)
+
+--------------------------------------------------------------------------------
+NOT NEEDED IN TRUENAS UI
+--------------------------------------------------------------------------------
+  DATA_ROOT                 already set to /app/Data in compose
 
 ================================================================================
-  DO NOT use "Launch Docker Image" env in compose — set vars in step 3 only.
-  DO NOT mount ./data — pick a host path on your pool in step 4.
-================================================================================
 
-If it still fails, SSH and run:
-  tail -n 100 /var/log/app_lifecycle.log
-
-Image (already on your NAS if you pulled it):
-  ghcr.io/trolle6/fluxer-tts:latest
+After editing env vars: Save → Upgrade/Redeploy (or Stop → Start).

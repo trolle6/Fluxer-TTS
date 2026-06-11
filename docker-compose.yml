@@ -3,9 +3,27 @@ services:
     image: ghcr.io/trolle6/fluxer-tts:latest
     restart: unless-stopped
     environment:
+      # Required
       FLUXER_BOT_TOKEN: ${FLUXER_BOT_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Channels & roles
+      FLUXER_CHANNEL_ID: ${FLUXER_CHANNEL_ID}
       FLUXER_LOG_CHANNEL_ID: ${FLUXER_LOG_CHANNEL_ID}
       FLUXER_MODERATOR_ROLE_ID: ${FLUXER_MODERATOR_ROLE_ID}
-      FLUXER_CHANNEL_ID: ${FLUXER_CHANNEL_ID}
+      TTS_CHANNEL_ID: ${TTS_CHANNEL_ID}
+      TTS_ROLE_ID: ${TTS_ROLE_ID}
+      # API / data
+      FLUXER_API_URL: ${FLUXER_API_URL}
       DATA_ROOT: /app/Data
+      # TTS tuning (leave blank in TrueNAS UI to use defaults)
+      TTS_DEFAULT_VOICE: ${TTS_DEFAULT_VOICE}
+      MAX_QUEUE_SIZE: ${MAX_QUEUE_SIZE}
+      RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW}
+      MAX_TTS_CACHE: ${MAX_TTS_CACHE}
+      AUTO_DISCONNECT_TIMEOUT: ${AUTO_DISCONNECT_TIMEOUT}
+      MAX_IMAGE_CACHE: ${MAX_IMAGE_CACHE}
+      # Flags
+      DEBUG_MODE: ${DEBUG_MODE}
+      SKIP_API_VALIDATION: ${SKIP_API_VALIDATION}
+      SS_DEBUG_START: ${SS_DEBUG_START}
