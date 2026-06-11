@@ -1,7 +1,8 @@
-# Secrets - never commit
+# Secrets
 config.env
 .env
 *.env.local
+appsettings.json
 
 # Python
 .venv
@@ -12,15 +13,26 @@ __pycache__
 .pytest_cache
 .mypy_cache
 
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
 # Logs
 bot.log
 *.log
 
-# Secret Santa state & archives (user data)
+# User data
 cogs/secret_santa_state.json
 cogs/secret_santa_state.backup
 cogs/archive/*.json
 cogs/archive/backups/
+WaveTechFluxerTTS/Data/secret_santa_state.json
+WaveTechFluxerTTS/Data/archive/*.json
+WaveTechFluxerTTS/Data/distributed_files/*
+!WaveTechFluxerTTS/Data/distributed_files/.gitkeep
 
 # IDE
 .idea

@@ -1,152 +1,79 @@
-# FluxerTools
+# WaveTech Fluxer Toolbox
 
-A **Fluxer**-friendly bot ported from [WaveTechToolBoxx](https://github.com/trolle6/WaveTechToolBoxx) (Discord).
+Fluxer port of [WaveTechToolBoxx](https://github.com/trolle6/WaveTechToolBoxx) — TTS, DALL·E, Secret Santa, and file distribution.
 
-## Features
+**Primary implementation:** C# / .NET 8 (`WaveTechFluxerTTS.sln`) — slash commands, full feature set including `/distribute`.
 
-- **DALL-E 3** – AI image generation with queue and caching
-- **TTS** – Text-to-speech in voice channels via OpenAI
-- **Secret Santa** – Event management (start, join, shuffle, wishlists, gifts, history, DMs)
+**Legacy:** Python + `fluxer.py` with `!` prefix commands lives in [`legacy/python/`](legacy/python/) (Docker deploy still works from that folder).
 
-## Requirements
+**Leaving Discord?** See [LEAVE_DISCORD.md](LEAVE_DISCORD.md).
 
-- Python 3.10+
-- [Fluxer](https://fluxer.app) account and community
-- [OpenAI API key](https://platform.openai.com/api-keys) (for TTS and DALL-E)
-- **ffmpeg** installed (for voice/TTS)
+## Features (C# bot)
 
-## Quick Start
+| Module | Commands / behavior |
+|--------|---------------------|
+| **TTS** | Auto-TTS in voice; `/tts stats`, `status`, `diagnostics`, `disconnect`, `clear` |
+| **DALL·E** | `/image` — DALL·E 3 generation with queue and cache |
+| **Secret Santa** | `/ss start`, `status`, `shuffle`, `stop`, `ask_giftee`, `giftee`, `wishlist`, `submit_gift`, `oversight`, `history`, `edit_gift`, `archive`, `user_history`; reaction signup; Reply button |
+| **Distribute** | `/distribute upload` (attach file), `list`, `browse`, `get`, `remove` |
 
-1. **Clone and setup** (first time only)
+## Prerequisites (C#)
 
-   **Windows:** Double-click `setup.bat` or run:
-   ```cmd
-   setup.bat
-   ```
+1. [.NET 8 SDK](https://dotnet.microsoft.com/download)
+2. Fluxer bot token ([developer dashboard](https://web.fluxer.app))
+3. OpenAI API key (TTS, DALL·E, SS anonymization)
+4. **ffmpeg** on PATH (or `FFMPEG_PATH`)
+5. Optional: mod role ID, log channel ID
 
-   **macOS/Linux:** Run `./setup.sh` or:
-   ```bash
-   cd FluxerTools
-   python3 -m venv .venv
-   .venv/bin/pip install -r requirements.txt
-   ```
+## Quick start (C#)
 
-   **Or manual:** `pip install -r requirements.txt` (in your project venv)
+```powershell
+cd WaveTechFluxerTTS
+copy appsettings.example.json appsettings.json
+# Edit appsettings.json — set Fluxer:BotToken and OpenAI:ApiKey
+dotnet run
+```
 
-2. **Configure**
+Open `WaveTechFluxerTTS.sln` in Visual Studio 2022+.
 
-   Copy `config.env.example` to `config.env` and fill in:
+| Key | Env fallback |
+|-----|----------------|
+| `Fluxer:BotToken` | `FLUXER_BOT_TOKEN` |
+| `OpenAI:ApiKey` | `OPENAI_API_KEY` |
+| `Fluxer:LogChannelId` | `FLUXER_LOG_CHANNEL_ID` |
+| `Fluxer:ModeratorRoleId` | `FLUXER_MODERATOR_ROLE_ID` |
 
-   - `FLUXER_TOKEN` – Create at [Fluxer User Settings → Applications](https://web.fluxer.app)
-   - `FLUXER_GUILD_ID` – Your community ID
-   - `FLUXER_CHANNEL_ID` – Main channel for bot messages
-   - `FLUXER_LOG_CHANNEL_ID` – Log channel
-   - `FLUXER_MODERATOR_ROLE_ID` – Moderator role for admin commands
-   - `OPENAI_API_KEY` – Your OpenAI API key
+Slash commands register on startup.
 
-3. **Run**
+## Data migration (from Discord or Python bot)
 
-   | Platform | Command |
-   |----------|---------|
-   | Windows | `run.bat` or `\.venv\Scripts\python.exe main.py` |
-   | macOS / Linux | `./run.sh` or `./.venv/bin/python main.py` |
-   | Docker (any) | `docker compose --env-file config.env up -d --build` (or `./deploy`) |
-   | PyCharm | Set interpreter to `FluxerTools\.venv\Scripts\python.exe` |
-
-## Running on NAS
-
-### Option A: Docker (recommended for Synology, QNAP, etc.)
-
-1. Copy the project to your NAS.
-2. Edit `config.env` with your tokens/IDs.
-3. Run:
-
-   ```bash
-   docker compose --env-file config.env up -d --build
-   ```
-
-   Or use the helper script: `./deploy` (uses `--env-file` when `config.env` exists).
-
-   **TrueNAS SCALE:** set the same variables in the app’s **Environment** section (no `config.env` file needed). Avoid the older `env_file: path/required` compose form — some hosts reject it.
-
-   Logs: `docker compose logs -f`  
-   Stop: `docker compose down`
-
-### Option B: Python + systemd (Linux NAS with SSH)
-
-1. Install Python 3.10+, ffmpeg, and dependencies.
-2. Create a systemd unit (e.g. `/etc/systemd/system/fluxertools.service`):
-
-   ```ini
-   [Unit]
-   Description=FluxerTools Bot
-   After=network.target
-
-   [Service]
-   Type=simple
-   User=youruser
-   WorkingDirectory=/path/to/FluxerTools
-   ExecStart=/path/to/FluxerTools/.venv/bin/python main.py
-   Restart=always
-   RestartSec=10
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-3. Enable and start: `sudo systemctl enable --now fluxertools`
-
-## Commands
-
-All commands use the `!` prefix.
-
-| Command | Description |
-|---------|-------------|
-| `!image <prompt> [size] [quality]` | Generate an image with DALL-E 3. Sizes: `1024x1024`, `1792x1024`, `1024x1792`. Quality: `standard`, `hd`. |
-| **TTS** | No command needed. Type in the TTS channel (default: main channel) while in voice — the bot speaks your message. |
-| `!ss help` | Secret Santa help |
-| `!ss start` | Start event (moderator) |
-| `!ss join` / `!ss leave` | Sign up / leave |
-| `!ss shuffle` | Make assignments & DM participants (moderator) |
-| `!ss stop` | End & archive (moderator) |
-| `!ss wishlist add/remove/view/clear` | Wishlist management |
-| `!ss giftee` | See your giftee's wishlist |
-| `!ss ask_giftee <q>` / `!ss reply_santa <r>` | Anonymous Q&A |
-| `!ss submit_gift <desc>` | Record gift |
-| `!ss history [year]` / `!ss user_history @user` | Archives |
-
-## Fluxer vs Discord
-
-[Fluxer](https://docs.fluxer.app) is a Discord-like platform. This bot uses [fluxer.py](https://pypi.org/project/fluxer.py/). See `FLUXER_CAPABILITIES.md` for API reference.
-
-Key differences:
-
-- **Prefix commands** (`!command`) – Fluxer does not yet support slash commands
-- **Fluxer REST/WebSocket APIs** – Similar to Discord but with different endpoints
-- **LiveKit** for voice – Voice uses LiveKit instead of Discord’s voice stack
-
-## Project Structure
+Copy into `WaveTechFluxerTTS/Data/` (or set `Data:Root` in config):
 
 ```
-FluxerTools/
-├── main.py                  # Bot entry point (FluxerToolsBot with voice_state fix)
-├── config.env               # Your config (create from config.env.example)
-├── requirements.txt
-├── run.bat / run.sh         # Cross-platform run scripts
-├── setup.bat / setup.sh     # First-time setup
-├── FLUXER_CAPABILITIES.md   # Fluxer API reference
-├── cogs/
-│   ├── DALLE_cog.py         # DALL-E 3 image generation (queue, cache)
-│   ├── voice_processing_cog.py  # Auto-TTS (stays in VC until empty)
-│   ├── fluxy.py             # Fluxer-native styling (embeds, colors)
-│   ├── SecretSanta_cog.py   # Secret Santa (full event management)
-│   ├── secret_santa_storage.py
-│   ├── secret_santa_assignments.py
-│   └── utils.py             # RateLimiter, LRUCache, CircuitBreaker
-└── cogs/archive/
+Data/
+  secret_santa_state.json
+  archive/
+  distributed_files/
+  distributed_files_metadata.json
 ```
+
+From the old Python bots, source paths are `cogs/secret_santa_state.json`, `cogs/archive/`, etc.
+
+## Legacy Python bot (Docker / NAS)
+
+```bash
+cd legacy/python
+cp config.env.example config.env
+# edit config.env
+docker compose --env-file config.env up -d --build
+```
+
+See `legacy/python/README.md` for `!` prefix commands and PyCharm setup.
+
+## Architecture (C#)
+
+Modules implement `IBotModule` and register via `BotHost`. Gateway handles messages, voice, reactions, and interactions. Voice uses LiveKit (not Discord Opus/DAVE).
 
 ## License
 
-Original WaveTechToolBoxx: see [its repository](https://github.com/trolle6/WaveTechToolBoxx).  
-This port: adapt as needed for your use.
+Original WaveTechToolBoxx: see [its repository](https://github.com/trolle6/WaveTechToolBoxx).
