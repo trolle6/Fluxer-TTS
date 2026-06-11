@@ -7,8 +7,8 @@ namespace WaveTechFluxerTTS.Fluxer;
 
 public sealed class GatewayClient : IAsyncDisposable
 {
-    // Match fluxer.py Intents.all() — partial intents can cause immediate disconnect on some hosts.
-    private const int Intents = 3276799;
+    // Fluxer Intents.all() — bits 0–15 only (65535). Discord-style 3276799 is invalid on Fluxer.
+    private const int Intents = 65535;
 
     private readonly BotConfig _config;
     private readonly FluxerRestApi _rest;
@@ -202,6 +202,7 @@ public sealed class GatewayClient : IAsyncDisposable
 
     private async Task SendIdentifyAsync(CancellationToken cancellationToken)
     {
+        // Fluxer uses os/browser/device — NOT Discord's $os/$browser/$device (see fluxer.py gateway.py).
         await SendJsonAsync(new
         {
             op = 2,
@@ -209,14 +210,15 @@ public sealed class GatewayClient : IAsyncDisposable
             {
                 token = _config.FluxerBotToken,
                 intents = Intents,
-                properties = new Dictionary<string, string>
+                properties = new
                 {
-                    ["$os"] = "linux",
-                    ["$browser"] = "WaveTechFluxerToolbox",
-                    ["$device"] = "WaveTechFluxerToolbox"
+                    os = "linux",
+                    browser = "WaveTechFluxerToolbox",
+                    device = "WaveTechFluxerToolbox"
                 }
             }
         }, cancellationToken);
+        Console.WriteLine("Sent IDENTIFY.");
     }
 
     private Task SendHeartbeatAsync(CancellationToken cancellationToken)
