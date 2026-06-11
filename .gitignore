@@ -1,3 +1,47 @@
 # Local TrueNAS compose backup — CONTAINS SECRETS. Never commit.
 truenas-app.local.yml
 *.local.yml
+
+# Secrets
+config.env
+.env
+*.env.local
+appsettings.json
+
+# Python
+.venv
+venv
+__pycache__
+*.py[cod]
+*.pyo
+.pytest_cache
+.mypy_cache
+
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Logs
+bot.log
+*.log
+
+# User data
+data/
+**/Data/config.env
+WaveTechFluxerTTS/Data/secret_santa_state.json
+cogs/secret_santa_state.json
+cogs/secret_santa_state.backup
+cogs/archive/*.json
+cogs/archive/backups/
+WaveTechFluxerTTS/Data/archive/*.json
+WaveTechFluxerTTS/Data/distributed_files/*
+!WaveTechFluxerTTS/Data/distributed_files/.gitkeep
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
