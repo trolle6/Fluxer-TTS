@@ -1,33 +1,4 @@
-# Default: pull from GHCR (works on NAS, Windows, Linux without building).
-# Local build: docker compose -f docker-compose.build.yml up -d --build
-# TrueNAS:    use docker-compose.truenas.yml — see TRUENAS.md
-#
-#   docker compose --env-file config.env up -d
-#   docker compose down
-#   docker compose logs -f
-
 services:
-  fluxer-bot:
+  fluxer:
     image: ghcr.io/trolle6/fluxer-tts:latest
-    container_name: fluxer-bot
     restart: unless-stopped
-    environment:
-      FLUXER_BOT_TOKEN: ${FLUXER_BOT_TOKEN}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      FLUXER_LOG_CHANNEL_ID: ${FLUXER_LOG_CHANNEL_ID:-}
-      FLUXER_MODERATOR_ROLE_ID: ${FLUXER_MODERATOR_ROLE_ID:-}
-      FLUXER_CHANNEL_ID: ${FLUXER_CHANNEL_ID:-}
-      TTS_CHANNEL_ID: ${TTS_CHANNEL_ID:-}
-      TTS_ROLE_ID: ${TTS_ROLE_ID:-}
-      FLUXER_API_URL: ${FLUXER_API_URL:-}
-      DEBUG_MODE: ${DEBUG_MODE:-false}
-      SKIP_API_VALIDATION: ${SKIP_API_VALIDATION:-false}
-      DATA_ROOT: /app/Data
-      Tts__MaxQueueSize: ${MAX_QUEUE_SIZE:-50}
-      Tts__RateLimitRequests: ${RATE_LIMIT_REQUESTS:-15}
-      Tts__RateLimitWindowSeconds: ${RATE_LIMIT_WINDOW:-60}
-      Tts__MaxAudioCacheEntries: ${MAX_TTS_CACHE:-50}
-      Tts__AutoDisconnectTimeoutSeconds: ${AUTO_DISCONNECT_TIMEOUT:-300}
-      Dalle__MaxCacheEntries: ${MAX_IMAGE_CACHE:-30}
-    volumes:
-      - ./data:/app/Data

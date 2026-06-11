@@ -1,0 +1,40 @@
+================================================================================
+  FLUXER BOT — TrueNAS Custom App (paste GitHub repo, install)
+================================================================================
+
+1. Apps → Discover Apps → Custom App
+
+2. Git repository:
+     https://github.com/trolle6/Fluxer-TTS
+
+   Branch:        master
+   Compose file:  docker-compose.yml   (default — leave as-is)
+
+3. Environment Variables  (Apps wizard — ADD EACH ONE):
+
+     FLUXER_BOT_TOKEN          =  (your Fluxer bot token)
+     OPENAI_API_KEY            =  (your OpenAI key)
+     DATA_ROOT                 =  /app/Data
+     FLUXER_LOG_CHANNEL_ID     =  (your log channel ID)
+     FLUXER_MODERATOR_ROLE_ID  =  (your mod role ID)
+     FLUXER_CHANNEL_ID         =  (your text channel ID)
+
+4. Storage → Add → Host Path:
+
+     Host Path:   /mnt/YOURPOOL/apps/fluxer/data
+     Mount Path:  /app/Data
+
+     (Replace YOURPOOL with your pool name, e.g. tank)
+
+5. Install
+
+================================================================================
+  DO NOT use "Launch Docker Image" env in compose — set vars in step 3 only.
+  DO NOT mount ./data — pick a host path on your pool in step 4.
+================================================================================
+
+If it still fails, SSH and run:
+  tail -n 100 /var/log/app_lifecycle.log
+
+Image (already on your NAS if you pulled it):
+  ghcr.io/trolle6/fluxer-tts:latest

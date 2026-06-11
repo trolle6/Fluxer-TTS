@@ -90,7 +90,7 @@ cp config.env.example config.env && ./deploy    # Linux / macOS / NAS
 
 Bot data (Secret Santa, distributed files) persists in `./data` on the host.
 
-**TrueNAS SCALE?** See **[TRUENAS.md](TRUENAS.md)** — use `docker-compose.truenas.yml` and image `ghcr.io/trolle6/fluxer-tts:latest` (do not use `build:`).
+**TrueNAS:** paste `https://github.com/trolle6/Fluxer-TTS` in Custom App — see **[TRUENAS-INSTALL.txt](TRUENAS-INSTALL.txt)** (5 steps).
 
 ## Architecture
 
