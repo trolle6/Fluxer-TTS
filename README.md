@@ -2,13 +2,15 @@
 
 Fluxer port of [WaveTechToolBoxx](https://github.com/trolle6/WaveTechToolBoxx) — TTS, DALL·E, Secret Santa, and file distribution.
 
+**GitHub:** [github.com/trolle6/Fluxer-TTS](https://github.com/trolle6/Fluxer-TTS)
+
 **Primary implementation:** C# / .NET 8 (`WaveTechFluxerTTS.sln`) — slash commands, full feature set including `/distribute`.
 
-**Legacy:** Python + `fluxer.py` with `!` prefix commands lives in [`legacy/python/`](legacy/python/) (Docker deploy still works from that folder).
+**Legacy:** Python + `fluxer.py` with `!` prefix commands lives in [`legacy/python/`](legacy/python/) on GitHub (Docker deploy still works from that folder).
 
 **Leaving Discord?** See [LEAVE_DISCORD.md](LEAVE_DISCORD.md).
 
-## Features (C# bot)
+## Features
 
 | Module | Commands / behavior |
 |--------|---------------------|
@@ -17,7 +19,7 @@ Fluxer port of [WaveTechToolBoxx](https://github.com/trolle6/WaveTechToolBoxx) �
 | **Secret Santa** | `/ss start`, `status`, `shuffle`, `stop`, `ask_giftee`, `giftee`, `wishlist`, `submit_gift`, `oversight`, `history`, `edit_gift`, `archive`, `user_history`; reaction signup; Reply button |
 | **Distribute** | `/distribute upload` (attach file), `list`, `browse`, `get`, `remove` |
 
-## Prerequisites (C#)
+## Prerequisites
 
 1. [.NET 8 SDK](https://dotnet.microsoft.com/download)
 2. Fluxer bot token ([developer dashboard](https://web.fluxer.app))
@@ -25,16 +27,9 @@ Fluxer port of [WaveTechToolBoxx](https://github.com/trolle6/WaveTechToolBoxx) �
 4. **ffmpeg** on PATH (or `FFMPEG_PATH`)
 5. Optional: mod role ID, log channel ID
 
-## Quick start (C#)
+## Configuration
 
-```powershell
-cd WaveTechFluxerTTS
-copy appsettings.example.json appsettings.json
-# Edit appsettings.json — set Fluxer:BotToken and OpenAI:ApiKey
-dotnet run
-```
-
-Open `WaveTechFluxerTTS.sln` in Visual Studio 2022+.
+Copy `WaveTechFluxerTTS/appsettings.example.json` → `appsettings.json`:
 
 | Key | Env fallback |
 |-----|----------------|
@@ -43,11 +38,9 @@ Open `WaveTechFluxerTTS.sln` in Visual Studio 2022+.
 | `Fluxer:LogChannelId` | `FLUXER_LOG_CHANNEL_ID` |
 | `Fluxer:ModeratorRoleId` | `FLUXER_MODERATOR_ROLE_ID` |
 
-Slash commands register on startup.
+## Data migration (from Python bot)
 
-## Data migration (from Discord or Python bot)
-
-Copy into `WaveTechFluxerTTS/Data/` (or set `Data:Root` in config):
+Copy into `WaveTechFluxerTTS/Data/` (or set `Data:Root`):
 
 ```
 Data/
@@ -57,23 +50,15 @@ Data/
   distributed_files_metadata.json
 ```
 
-From the old Python bots, source paths are `cogs/secret_santa_state.json`, `cogs/archive/`, etc.
+## Run
 
-## Legacy Python bot (Docker / NAS)
-
-```bash
-cd legacy/python
-cp config.env.example config.env
-# edit config.env
-docker compose --env-file config.env up -d --build
+```powershell
+cd WaveTechFluxerTTS
+dotnet run
 ```
 
-See `legacy/python/README.md` for `!` prefix commands and PyCharm setup.
+Open `WaveTechFluxerTTS.sln` in Visual Studio 2022+.
 
-## Architecture (C#)
+## Architecture
 
 Modules implement `IBotModule` and register via `BotHost`. Gateway handles messages, voice, reactions, and interactions. Voice uses LiveKit (not Discord Opus/DAVE).
-
-## License
-
-Original WaveTechToolBoxx: see [its repository](https://github.com/trolle6/WaveTechToolBoxx).
